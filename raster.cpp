@@ -279,6 +279,7 @@ Pixmap rasterize(const Document& document, size_t width, size_t height) {
 	std::vector<Segment> segments;
 	std::vector<float> ys;
 
+	// collect the segments and ys for each polygon
 	for (const Polygon& polygon: document.polygons) {
 		const std::vector<Point>& points = polygon.points;
 
@@ -292,11 +293,25 @@ Pixmap rasterize(const Document& document, size_t width, size_t height) {
 		}
 	}
 
-	// TODO: handle intersections
+	// add additional ys for intersecting segments
+	for (size_t i = 0; i < segments.size(); ++i) {
+		for (size_t j = i + 1; j < segments.size(); ++j) {
+			const Segment& s0 = segments[i];
+			const Segment& s1 = segments[j];
+			float y0 = std::max(s0.y0, s1.y0);
+			float y1 = std::min(s0.y1, s1.y1);
+			if (y0 < y1 && s0.line.m != s1.line.m) {
+				float y = intersect(s0.line, s1.line);
+				if (y0 < y && y < y1) {
+					ys.push_back(y);
+				}
+			}
+		}
+	}
 
 	std::sort(ys.begin(), ys.end());
 
-	std::vector<Strip> strips;
+	Pixmap pixmap(width, height);
 	for (size_t i = 1; i < ys.size(); ++i) {
 		float y0 = ys[i-1];
 		float y1 = ys[i];
@@ -311,13 +326,8 @@ Pixmap rasterize(const Document& document, size_t width, size_t height) {
 			std::sort(strip.lines.begin(), strip.lines.end(), [cy](const Line& l0, const Line& l1) {
 				return l0.get_x(cy) < l1.get_x(cy);
 			});
-			strips.push_back(strip);
+			rasterize_strip(strip, pixmap);
 		}
-	}
-
-	Pixmap pixmap(width, height);
-	for (const Strip& strip: strips) {
-		rasterize_strip(strip, pixmap);
 	}
 	return pixmap;
 }
@@ -326,7 +336,7 @@ Pixmap rasterize(const Document& document, size_t width, size_t height) {
 
 int main() {
 	SolidFill blue(Color(0, 0, 1) * .85f);
-	SolidFill yellow(Color(1, 1, 0) * .7f);
+	SolidFill yellow(Color(1, 1, 0) * .75f);
 
 	Document document {
 		Polygon(&blue, 1, {
@@ -339,7 +349,7 @@ int main() {
 		Polygon(&yellow, 2, {
 			Point(100, 200),
 			Point(100, 50),
-			Point(150, 150)
+			Point(50, 150)
 		})
 	};
 	Pixmap pixmap = rasterize(document, 300, 300);
