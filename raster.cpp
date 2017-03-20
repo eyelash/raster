@@ -70,43 +70,45 @@ struct Polygon {
 	std::vector<Point> points;
 	Fill* fill;
 	int index;
-	int n;
-	Polygon(Fill* fill, int index): fill(fill), index(index), n(0) {}
-	void push_point(const Point& point) {
-		points.push_back(point);
-	}
+	mutable int n;
+	Polygon(Fill* fill, int index, std::initializer_list<Point> points): points(points), fill(fill), index(index), n(0) {}
 };
 
 struct PolygonCompare {
-	bool operator ()(Polygon* p0, Polygon* p1) {
+	bool operator ()(const Polygon* p0, const Polygon* p1) {
 		return p0->index < p1->index;
 	}
 };
 
-struct PolygonSet: std::set<Polygon*, PolygonCompare> {
-	void remove(Polygon* polygon) {
+struct PolygonSet: std::set<const Polygon*, PolygonCompare> {
+	void remove(const Polygon* polygon) {
 		auto i = find(polygon);
 		erase(i);
 	}
 	Color get_color(const Point& point) const {
 		Color color;
-		for (Polygon* polygon: *this) {
+		for (const Polygon* polygon: *this) {
 			color = blend(color, polygon->fill->evaluate(point));
 		}
 		return color;
 	}
 };
 
+struct Document {
+	std::vector<Polygon> polygons;
+	Document(std::initializer_list<Polygon> polygons): polygons(polygons) {}
+};
+
 struct PolygonLine: Line {
 	int direction;
-	Polygon* polygon;
-	constexpr PolygonLine(const Point& p0, const Point& p1, int direction, Polygon* polygon): Line(p0, p1), direction(direction), polygon(polygon) {}
+	const Polygon* polygon;
+	constexpr PolygonLine(const Point& p0, const Point& p1, int direction, const Polygon* polygon): Line(p0, p1), direction(direction), polygon(polygon) {}
 };
 
 struct Segment {
 	float y0, y1;
 	PolygonLine line;
-	constexpr Segment(const Point& p0, const Point& p1, int direction, Polygon* polygon): y0(p0.y), y1(p1.y), line(p0, p1, direction, polygon) {}
+	constexpr Segment(const Point& p0, const Point& p1, int direction, const Polygon* polygon): y0(p0.y), y1(p1.y), line(p0, p1, direction, polygon) {}
 };
 
 struct Strip {
@@ -265,7 +267,7 @@ void rasterize_strip(const Strip& strip, Pixmap& pixmap) {
 	}
 }
 
-void append_segment(std::vector<Segment>& segments, const Point& p0, const Point& p1, Polygon* polygon) {
+void append_segment(std::vector<Segment>& segments, const Point& p0, const Point& p1, const Polygon* polygon) {
 	if (p0.y < p1.y) {
 		segments.push_back(Segment(p0, p1, 1, polygon));
 	} else if (p0.y > p1.y) {
@@ -273,19 +275,21 @@ void append_segment(std::vector<Segment>& segments, const Point& p0, const Point
 	}
 }
 
-Pixmap rasterize(Polygon* polygon, size_t width, size_t height) {
-	const std::vector<Point>& points = polygon->points;
-
-	// convert points to segments
+Pixmap rasterize(const Document& document, size_t width, size_t height) {
 	std::vector<Segment> segments;
-	for (size_t i = 1; i < points.size(); ++i) {
-		append_segment(segments, points[i-1], points[i], polygon);
-	}
-	append_segment(segments, points.back(), points[0], polygon);
-
 	std::vector<float> ys;
-	for (const Point& p: points) {
-		ys.push_back(p.y);
+
+	for (const Polygon& polygon: document.polygons) {
+		const std::vector<Point>& points = polygon.points;
+
+		for (size_t i = 1; i < points.size(); ++i) {
+			append_segment(segments, points[i-1], points[i], &polygon);
+		}
+		append_segment(segments, points.back(), points[0], &polygon);
+
+		for (const Point& p: points) {
+			ys.push_back(p.y);
+		}
 	}
 
 	// TODO: handle intersections
@@ -321,13 +325,23 @@ Pixmap rasterize(Polygon* polygon, size_t width, size_t height) {
 }
 
 int main() {
-	SolidFill fill(Color(0, 0, 1) * .85f);
-	Polygon polygon(&fill, 1);
-	polygon.push_point(Point( 50, 250));
-	polygon.push_point(Point(100,  50));
-	polygon.push_point(Point(150, 150));
-	polygon.push_point(Point(200, 100));
-	polygon.push_point(Point(250, 200));
-	Pixmap pixmap = rasterize(&polygon, 300, 300);
+	SolidFill blue(Color(0, 0, 1) * .85f);
+	SolidFill yellow(Color(1, 1, 0) * .7f);
+
+	Document document {
+		Polygon(&blue, 1, {
+			Point( 50, 250),
+			Point(100,  50),
+			Point(150, 150),
+			Point(200, 100),
+			Point(250, 200)
+		}),
+		Polygon(&yellow, 2, {
+			Point(100, 200),
+			Point(100, 50),
+			Point(150, 150)
+		})
+	};
+	Pixmap pixmap = rasterize(document, 300, 300);
 	pixmap.write("result.png");
 }
