@@ -6,6 +6,7 @@ All rights reserved.
 */
 
 #include <vector>
+#include <set>
 #include <algorithm>
 #include <cstdio>
 #include <png.h>
@@ -34,23 +35,6 @@ constexpr float intersect(const Line& l0, const Line& l1) {
 	return (l1.x0 - l0.x0) / (l0.m - l1.m);
 }
 
-struct PolygonLine: Line {
-	int direction;
-	constexpr PolygonLine(const Point& p0, const Point& p1, int direction): Line(p0, p1), direction(direction) {}
-};
-
-struct Segment {
-	float y0, y1;
-	PolygonLine line;
-	constexpr Segment(const Point& p0, const Point& p1, int direction): y0(p0.y), y1(p1.y), line(p0, p1, direction) {}
-};
-
-struct Strip {
-	float y0, y1;
-	std::vector<PolygonLine> lines;
-	Strip(float y0, float y1): y0(y0), y1(y1) {}
-};
-
 struct Color {
 	float r, g, b, a;
 	constexpr Color(float r, float g, float b, float a = 1.f): r(r), g(g), b(b), a(a) {}
@@ -69,6 +53,67 @@ struct Color {
 constexpr Color blend(const Color& dst, const Color& src) {
 	return src + dst * (1.f - src.a);
 }
+
+struct Fill {
+	virtual Color evaluate(const Point& point) = 0;
+};
+
+struct SolidFill: Fill {
+	Color color;
+	SolidFill(const Color& color): color(color) {}
+	Color evaluate(const Point& point) override {
+		return color;
+	}
+};
+
+struct Polygon {
+	std::vector<Point> points;
+	Fill* fill;
+	int index;
+	int n;
+	Polygon(Fill* fill, int index): fill(fill), index(index), n(0) {}
+	void push_point(const Point& point) {
+		points.push_back(point);
+	}
+};
+
+struct PolygonCompare {
+	bool operator ()(Polygon* p0, Polygon* p1) {
+		return p0->index < p1->index;
+	}
+};
+
+struct PolygonSet: std::set<Polygon*, PolygonCompare> {
+	void remove(Polygon* polygon) {
+		auto i = find(polygon);
+		erase(i);
+	}
+	Color get_color(const Point& point) const {
+		Color color;
+		for (Polygon* polygon: *this) {
+			color = blend(color, polygon->fill->evaluate(point));
+		}
+		return color;
+	}
+};
+
+struct PolygonLine: Line {
+	int direction;
+	Polygon* polygon;
+	constexpr PolygonLine(const Point& p0, const Point& p1, int direction, Polygon* polygon): Line(p0, p1), direction(direction), polygon(polygon) {}
+};
+
+struct Segment {
+	float y0, y1;
+	PolygonLine line;
+	constexpr Segment(const Point& p0, const Point& p1, int direction, Polygon* polygon): y0(p0.y), y1(p1.y), line(p0, p1, direction, polygon) {}
+};
+
+struct Strip {
+	float y0, y1;
+	std::vector<PolygonLine> lines;
+	Strip(float y0, float y1): y0(y0), y1(y1) {}
+};
 
 class Pixmap {
 	std::vector<Color> pixels;
@@ -156,7 +201,8 @@ float rasterize_pixel(const Trapezoid& trapezoid, size_t x) {
 		Line line(x0);
 		if (x0 > x3) {
 			area -= Trapezoid(y0, y1, l0, line).get_area();
-		} else {
+		}
+		else {
 			float intersection = intersect(l0, line);
 			area -= Trapezoid(y0, intersection, l0, line).get_area();
 		}
@@ -185,21 +231,30 @@ float rasterize_pixel(const Trapezoid& trapezoid, size_t x) {
 void rasterize_row(const Strip& strip, Pixmap& pixmap, size_t y) {
 	float y0 = std::max(static_cast<float>(y), strip.y0);
 	float y1 = std::min(static_cast<float>(y+1), strip.y1);
-	int n = 0;
+	PolygonSet set;
 	for (size_t i = 1; i < strip.lines.size(); ++i) {
 		PolygonLine l0 = strip.lines[i-1];
-		n += l0.direction;
-		if (n != 0) { // nonzero winding rule for now
+		l0.polygon->n += l0.direction;
+		if (l0.polygon->n != 0) {
+			set.insert(l0.polygon);
+		}
+		else {
+			set.remove(l0.polygon);
+		}
+		if (!set.empty()) {
 			PolygonLine l1 = strip.lines[i];
 			Trapezoid trapezoid(y0, y1, l0, l1);
 			float x0 = std::min(l0.get_x(y0), l0.get_x(y1));
 			float x1 = std::max(l1.get_x(y0), l1.get_x(y1));
 			for (size_t x = x0; x < x1; ++x) {
 				float factor = rasterize_pixel(trapezoid, x);
-				pixmap.add_pixel(x, y, Color(0, 0, 1) * .85f * factor);
+				Color color = set.get_color(Point(static_cast<float>(x) + .5f, static_cast<float>(y) + .5f));
+				pixmap.add_pixel(x, y, color * factor);
 			}
 		}
 	}
+	PolygonLine l = strip.lines.back();
+	l.polygon->n += l.direction;
 }
 
 void rasterize_strip(const Strip& strip, Pixmap& pixmap) {
@@ -210,31 +265,33 @@ void rasterize_strip(const Strip& strip, Pixmap& pixmap) {
 	}
 }
 
-void append_segment(std::vector<Segment>& segments, const Point& p0, const Point& p1) {
+void append_segment(std::vector<Segment>& segments, const Point& p0, const Point& p1, Polygon* polygon) {
 	if (p0.y < p1.y) {
-		segments.push_back(Segment(p0, p1, 1));
+		segments.push_back(Segment(p0, p1, 1, polygon));
 	} else if (p0.y > p1.y) {
-		segments.push_back(Segment(p1, p0, -1));
+		segments.push_back(Segment(p1, p0, -1, polygon));
 	}
 }
 
-Pixmap rasterize(const std::vector<Point>& points, size_t width, size_t height) {
+Pixmap rasterize(Polygon* polygon, size_t width, size_t height) {
+	const std::vector<Point>& points = polygon->points;
+
 	// convert points to segments
 	std::vector<Segment> segments;
 	for (size_t i = 1; i < points.size(); ++i) {
-		append_segment(segments, points[i-1], points[i]);
+		append_segment(segments, points[i-1], points[i], polygon);
 	}
-	append_segment(segments, points.back(), points[0]);
-	
+	append_segment(segments, points.back(), points[0], polygon);
+
 	std::vector<float> ys;
 	for (const Point& p: points) {
 		ys.push_back(p.y);
 	}
-	
+
 	// TODO: handle intersections
-	
+
 	std::sort(ys.begin(), ys.end());
-	
+
 	std::vector<Strip> strips;
 	for (size_t i = 1; i < ys.size(); ++i) {
 		float y0 = ys[i-1];
@@ -253,7 +310,7 @@ Pixmap rasterize(const std::vector<Point>& points, size_t width, size_t height) 
 			strips.push_back(strip);
 		}
 	}
-	
+
 	Pixmap pixmap(width, height);
 	for (const Strip& strip: strips) {
 		rasterize_strip(strip, pixmap);
@@ -264,13 +321,13 @@ Pixmap rasterize(const std::vector<Point>& points, size_t width, size_t height) 
 }
 
 int main() {
-	std::vector<Point> points {
-		Point( 50, 250),
-		Point(100,  50),
-		Point(150, 150),
-		Point(200, 100),
-		Point(250, 200)
-	};
-	Pixmap pixmap = rasterize(points, 300, 300);
+	SolidFill fill(Color(0, 0, 1) * .85f);
+	Polygon polygon(&fill, 1);
+	polygon.push_point(Point( 50, 250));
+	polygon.push_point(Point(100,  50));
+	polygon.push_point(Point(150, 150));
+	polygon.push_point(Point(200, 100));
+	polygon.push_point(Point(250, 200));
+	Pixmap pixmap = rasterize(&polygon, 300, 300);
 	pixmap.write("result.png");
 }
