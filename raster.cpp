@@ -248,6 +248,8 @@ void rasterize_row(const Strip& strip, Pixmap& pixmap, size_t y) {
 			Trapezoid trapezoid(y0, y1, l0, l1);
 			float x0 = std::min(l0.get_x(y0), l0.get_x(y1));
 			float x1 = std::max(l1.get_x(y0), l1.get_x(y1));
+			x0 = std::max(x0, 0.f);
+			x1 = std::min(x1, pixmap.get_width() - .5f);
 			for (size_t x = x0; x < x1; ++x) {
 				float factor = rasterize_pixel(trapezoid, x);
 				Color color = set.get_color(Point(static_cast<float>(x) + .5f, static_cast<float>(y) + .5f));
@@ -260,8 +262,8 @@ void rasterize_row(const Strip& strip, Pixmap& pixmap, size_t y) {
 }
 
 void rasterize_strip(const Strip& strip, Pixmap& pixmap) {
-	float y0 = std::max(0.f, strip.y0);
-	float y1 = std::min(static_cast<float>(pixmap.get_height()), strip.y1);
+	float y0 = std::max(strip.y0, 0.f);
+	float y1 = std::min(strip.y1, pixmap.get_height() - .5f);
 	for (size_t y = y0; y < y1; ++y) {
 		rasterize_row(strip, pixmap, y);
 	}
