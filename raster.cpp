@@ -6,8 +6,9 @@ All rights reserved.
 */
 
 #include <vector>
-#include <set>
+#include <map>
 #include <algorithm>
+#include <utility>
 #include <cstdio>
 #include <png.h>
 
@@ -34,6 +35,13 @@ struct Line {
 constexpr float intersect(const Line& l0, const Line& l1) {
 	return (l1.x0 - l0.x0) / (l0.m - l1.m);
 }
+
+struct Segment {
+	float y0, y1;
+	Line line;
+	constexpr Segment(const Point& p0, const Point& p1): y0(p0.y), y1(p1.y), line(p0, p1) {}
+	constexpr Segment(float y0, float y1, const Line& line): y0(y0), y1(y1), line(line) {}
+};
 
 struct Color {
 	float r, g, b, a;
@@ -66,54 +74,53 @@ struct SolidFill: Fill {
 	}
 };
 
-struct Polygon {
-	std::vector<Point> points;
+struct Shape {
+	std::vector<Segment> segments;
 	Fill* fill;
 	int index;
-	mutable int n;
-	Polygon(Fill* fill, int index, std::initializer_list<Point> points): points(points), fill(fill), index(index), n(0) {}
+	Shape(Fill* fill, int index): fill(fill), index(index) {}
 };
 
-struct PolygonCompare {
-	bool operator ()(const Polygon* p0, const Polygon* p1) {
-		return p0->index < p1->index;
+struct ShapeCompare {
+	bool operator ()(const Shape* s0, const Shape* s1) {
+		return s0->index < s1->index;
 	}
 };
 
-struct PolygonSet: std::set<const Polygon*, PolygonCompare> {
-	void remove(const Polygon* polygon) {
-		auto i = find(polygon);
-		erase(i);
-	}
+struct ShapeMap: std::map<const Shape*, int, ShapeCompare> {
 	Color get_color(const Point& point) const {
 		Color color;
-		for (const Polygon* polygon: *this) {
-			color = blend(color, polygon->fill->evaluate(point));
+		for (auto& pair: *this) {
+			color = blend(color, pair.first->fill->evaluate(point));
 		}
 		return color;
 	}
 };
 
-struct Document {
-	std::vector<Polygon> polygons;
-	Document(std::initializer_list<Polygon> polygons): polygons(polygons) {}
-};
-
-struct PolygonLine: Line {
+struct RasterizeLine: Line {
 	int direction;
-	const Polygon* polygon;
-	constexpr PolygonLine(const Point& p0, const Point& p1, int direction, const Polygon* polygon): Line(p0, p1), direction(direction), polygon(polygon) {}
+	const Shape* shape;
+	RasterizeLine(const Line& line, int direction, const Shape* shape): Line(line), direction(direction), shape(shape) {}
 };
 
-struct Segment {
-	float y0, y1;
-	PolygonLine line;
-	constexpr Segment(const Point& p0, const Point& p1, int direction, const Polygon* polygon): y0(p0.y), y1(p1.y), line(p0, p1, direction, polygon) {}
+struct RasterizeSegment: Segment {
+	int direction;
+	const Shape* shape;
+	static constexpr int get_direction(const Segment& s) {
+		return s.y0 < s.y1 ? 1 : -1;
+	}
+	static constexpr Segment normalize_segment(const Segment& s) {
+		return s.y0 < s.y1 ? s : Segment(s.y1, s.y0, s.line);
+	}
+	RasterizeSegment(const Segment& segment, const Shape* shape): Segment(normalize_segment(segment)), direction(get_direction(segment)), shape(shape) {}
+	RasterizeLine get_line() const {
+		return RasterizeLine(line, direction, shape);
+	}
 };
 
 struct Strip {
 	float y0, y1;
-	std::vector<PolygonLine> lines;
+	std::vector<RasterizeLine> lines;
 	Strip(float y0, float y1): y0(y0), y1(y1) {}
 };
 
@@ -233,18 +240,21 @@ float rasterize_pixel(const Trapezoid& trapezoid, size_t x) {
 void rasterize_row(const Strip& strip, Pixmap& pixmap, size_t y) {
 	float y0 = std::max(static_cast<float>(y), strip.y0);
 	float y1 = std::min(static_cast<float>(y+1), strip.y1);
-	PolygonSet set;
+	ShapeMap shapes;
 	for (size_t i = 1; i < strip.lines.size(); ++i) {
-		PolygonLine l0 = strip.lines[i-1];
-		l0.polygon->n += l0.direction;
-		if (l0.polygon->n != 0) {
-			set.insert(l0.polygon);
+		const RasterizeLine& l0 = strip.lines[i-1];
+		auto iter = shapes.find(l0.shape);
+		if (iter != shapes.end()) {
+			iter->second += l0.direction;
+			if (iter->second == 0) {
+				shapes.erase(iter);
+			}
 		}
 		else {
-			set.remove(l0.polygon);
+			shapes.insert(std::make_pair(l0.shape, l0.direction));
 		}
-		if (!set.empty()) {
-			PolygonLine l1 = strip.lines[i];
+		if (!shapes.empty()) {
+			const RasterizeLine& l1 = strip.lines[i];
 			Trapezoid trapezoid(y0, y1, l0, l1);
 			float x0 = std::min(l0.get_x(y0), l0.get_x(y1));
 			float x1 = std::max(l1.get_x(y0), l1.get_x(y1));
@@ -252,13 +262,11 @@ void rasterize_row(const Strip& strip, Pixmap& pixmap, size_t y) {
 			x1 = std::min(x1, pixmap.get_width() - .5f);
 			for (size_t x = x0; x < x1; ++x) {
 				float factor = rasterize_pixel(trapezoid, x);
-				Color color = set.get_color(Point(static_cast<float>(x) + .5f, static_cast<float>(y) + .5f));
+				Color color = shapes.get_color(Point(static_cast<float>(x) + .5f, static_cast<float>(y) + .5f));
 				pixmap.add_pixel(x, y, color * factor);
 			}
 		}
 	}
-	PolygonLine l = strip.lines.back();
-	l.polygon->n += l.direction;
 }
 
 void rasterize_strip(const Strip& strip, Pixmap& pixmap) {
@@ -269,29 +277,16 @@ void rasterize_strip(const Strip& strip, Pixmap& pixmap) {
 	}
 }
 
-void append_segment(std::vector<Segment>& segments, const Point& p0, const Point& p1, const Polygon* polygon) {
-	if (p0.y < p1.y) {
-		segments.push_back(Segment(p0, p1, 1, polygon));
-	} else if (p0.y > p1.y) {
-		segments.push_back(Segment(p1, p0, -1, polygon));
-	}
-}
-
-Pixmap rasterize(const Document& document, size_t width, size_t height) {
-	std::vector<Segment> segments;
+Pixmap rasterize(const std::vector<Shape>& shapes, size_t width, size_t height) {
+	std::vector<RasterizeSegment> segments;
 	std::vector<float> ys;
 
-	// collect the segments and ys for each polygon
-	for (const Polygon& polygon: document.polygons) {
-		const std::vector<Point>& points = polygon.points;
-
-		for (size_t i = 1; i < points.size(); ++i) {
-			append_segment(segments, points[i-1], points[i], &polygon);
-		}
-		append_segment(segments, points.back(), points[0], &polygon);
-
-		for (const Point& p: points) {
-			ys.push_back(p.y);
+	// collect the segments and ys for each shape
+	for (const Shape& shape: shapes) {
+		for (const Segment& segment: shape.segments) {
+			segments.push_back(RasterizeSegment(segment, &shape));
+			ys.push_back(segment.y0);
+			ys.push_back(segment.y1);
 		}
 	}
 
@@ -319,9 +314,9 @@ Pixmap rasterize(const Document& document, size_t width, size_t height) {
 		float y1 = ys[i];
 		if (y0 != y1) {
 			Strip strip(y0, y1);
-			for (const Segment& segment: segments) {
+			for (const RasterizeSegment& segment: segments) {
 				if (y0 < segment.y1 && segment.y0 < y1) {
-					strip.lines.push_back(segment.line);
+					strip.lines.push_back(segment.get_line());
 				}
 			}
 			float cy = y0 + (y1 - y0) * .5f;
@@ -334,26 +329,78 @@ Pixmap rasterize(const Document& document, size_t width, size_t height) {
 	return pixmap;
 }
 
+struct Subpath {
+	std::vector<Point> points;
+	bool closed;
+	Subpath(): points(), closed(false) {}
+};
+
+struct Path {
+	std::vector<Subpath> subpaths;
+	void move_to(const Point& p) {
+		subpaths.push_back(Subpath());
+		subpaths.back().points.push_back(p);
+	}
+	void move_to(float x, float y) {
+		move_to(Point(x, y));
+	}
+	void line_to(const Point& p) {
+		subpaths.back().points.push_back(p);
+	}
+	void line_to(float x, float y) {
+		line_to(Point(x, y));
+	}
+	void close() {
+		subpaths.back().closed = true;
+	}
+};
+
+struct Document {
+	std::vector<Shape> shapes;
+	void append_segment(const Point& p0, const Point& p1) {
+		if (p0.y != p1.y) {
+			shapes.back().segments.push_back(Segment(p0, p1));
+		}
+	}
+	void fill(const Path& path, Fill* fill) {
+		int index = shapes.size();
+		shapes.push_back(Shape(fill, index));
+		for (const Subpath& subpath: path.subpaths) {
+			const std::vector<Point>& points = subpath.points;
+			for (size_t i = 1; i < points.size(); ++i) {
+				append_segment(points[i-1], points[i]);
+			}
+			append_segment(points.back(), points.front());
+		}
+	}
+};
+
 }
 
 int main() {
+	Document document;
 	SolidFill blue(Color(0, 0, 1) * .85f);
 	SolidFill yellow(Color(1, 1, 0) * .75f);
 
-	Document document {
-		Polygon(&blue, 1, {
-			Point( 50, 250),
-			Point(100,  50),
-			Point(150, 150),
-			Point(200, 100),
-			Point(250, 200)
-		}),
-		Polygon(&yellow, 2, {
-			Point(100, 200),
-			Point(100, 50),
-			Point(50, 150)
-		})
-	};
-	Pixmap pixmap = rasterize(document, 300, 300);
+	{
+		Path path;
+		path.move_to( 50, 250);
+		path.line_to(100,  50);
+		path.line_to(150, 150);
+		path.line_to(200, 100);
+		path.line_to(250, 200);
+		path.close();
+		document.fill(path, &blue);
+	}
+	{
+		Path path;
+		path.move_to(100, 200);
+		path.line_to(100,  50);
+		path.line_to( 50, 150);
+		path.close();
+		document.fill(path, &yellow);
+	}
+
+	Pixmap pixmap = rasterize(document.shapes, 300, 300);
 	pixmap.write("result.png");
 }
