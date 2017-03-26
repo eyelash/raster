@@ -173,67 +173,67 @@ public:
 };
 
 struct Trapezoid {
+
+	//    y1    --------
+	//         /       /
+	//        /       /
+	//       /       /
+	//    y0 --------
+	//      x0 x1   x2 x3
+
 	float y0, y1;
-	Line l0, l1;
-	constexpr Trapezoid(float y0, float y1, const Line& l0, const Line& l1): y0(y0), y1(y1), l0(l0), l1(l1) {}
-	float get_area() const {
-		const float height = y1 - y0;
-		const float cy = y0 + height * .5f;
-		return (l1.get_x(cy) - l0.get_x(cy)) * height;
+	float x0, x1, x2, x3;
+	constexpr Trapezoid(float y0, float y1, float x0, float x1, float x2, float x3): y0(y0), y1(y1), x0(x0), x1(x1), x2(x2), x3(x3) {}
+	constexpr Trapezoid(float y0, float y1, const Line& l0, const Line& l1): y0(y0), y1(y1), x0(l0.get_x(y0)), x1(l0.get_x(y1)), x2(l1.get_x(y0)), x3(l1.get_x(y1)) {}
+	constexpr float get_area() const {
+		return (y1 - y0) * (x2 + x3 - x0 - x1) * .5f;
 	}
 };
 
 float rasterize_pixel(const Trapezoid& trapezoid, size_t x) {
-	float area = trapezoid.get_area();
-
 	// compute the intersection of the trapezoid and the pixel
-	const float x0 = static_cast<float>(x);
-	const float x1 = static_cast<float>(x + 1);
 	const float y0 = trapezoid.y0;
 	const float y1 = trapezoid.y1;
+	const float x0 = trapezoid.x0;
+	const float x1 = trapezoid.x1;
+	const float x2 = trapezoid.x2;
+	const float x3 = trapezoid.x3;
+	const float x4 = x;
+	const float x5 = x + 1;
 
-	//     x3 ------ x5
-	//       /     /
-	//      /     /
-	//   x2 ------ x4
-	float x2 = trapezoid.l0.get_x(y0);
-	float x3 = trapezoid.l0.get_x(y1);
-	float x4 = trapezoid.l1.get_x(y0);
-	float x5 = trapezoid.l1.get_x(y1);
-	if (x2 > x3) std::swap(x2, x3);
-	if (x4 > x5) std::swap(x4, x5);
-	
-	Line l0(Point(x2, y0), Point(x3, y1));
-	Line l1(Point(x4, y0), Point(x5, y1));
-	
-	if (x0 > x2) {
-		Line line(x0);
-		if (x0 > x3) {
-			area -= Trapezoid(y0, y1, l0, line).get_area();
+	// calculate the area assuming x4 >= x1 && x5 <= x2
+	float area = y1 - y0;
+
+	// and correct it if the assumtion is wrong
+	if (x4 < x1) {
+		const Line l0(Point(x0, y0), Point(x1, y1));
+		if (x4 < x0) {
+			area -= Trapezoid(y0, y1, x4, x4, x0, x1).get_area();
 		}
 		else {
-			float intersection = intersect(l0, line);
-			area -= Trapezoid(y0, intersection, l0, line).get_area();
+			const float intersection = intersect(l0, Line(x4));
+			area -= Trapezoid(intersection, y1, x4, x4, x4, x1).get_area();
 		}
-		if (x0 > x4) {
-			float intersection = intersect(l1, line);
-			area += Trapezoid(y0, intersection, l1, line).get_area();
+		if (x5 < x1) {
+			const float intersection = intersect(l0, Line(x5));
+			area += Trapezoid(intersection, y1, x5, x5, x5, x1).get_area();
 		}
 	}
-	if (x1 < x5) {
-		Line line(x1);
-		if (x1 < x4) {
-			area -= Trapezoid(y0, y1, line, l1).get_area();
+	if (x5 > x2) {
+		const Line l1(Point(x2, y0), Point(x3, y1));
+		if (x5 > x3) {
+			area -= Trapezoid(y0, y1, x2, x3, x5, x5).get_area();
 		}
 		else {
-			float intersection = intersect(l1, line);
-			area -= Trapezoid(intersection, y1, line, l1).get_area();
+			const float intersection = intersect(l1, Line(x5));
+			area -= Trapezoid(y0, intersection, x2, x5, x5, x5).get_area();
 		}
-		if (x1 < x3) {
-			float intersection = intersect(l0, line);
-			area += Trapezoid(intersection, y1, line, l0).get_area();
+		if (x4 > x2) {
+			const float intersection = intersect(l1, Line(x4));
+			area += Trapezoid(y0, intersection, x2, x4, x4, x4).get_area();
 		}
 	}
+
 	return area;
 }
 
@@ -256,10 +256,10 @@ void rasterize_row(const Strip& strip, Pixmap& pixmap, size_t y) {
 		if (!shapes.empty()) {
 			const RasterizeLine& l1 = strip.lines[i];
 			Trapezoid trapezoid(y0, y1, l0, l1);
-			float x0 = std::min(l0.get_x(y0), l0.get_x(y1));
-			float x1 = std::max(l1.get_x(y0), l1.get_x(y1));
-			x0 = std::max(x0, 0.f);
-			x1 = std::min(x1, pixmap.get_width() - .5f);
+			if (trapezoid.x0 > trapezoid.x1) std::swap(trapezoid.x0, trapezoid.x1);
+			if (trapezoid.x2 > trapezoid.x3) std::swap(trapezoid.x2, trapezoid.x3);
+			const float x0 = std::max(trapezoid.x0, 0.f);
+			const float x1 = std::min(trapezoid.x3, pixmap.get_width() - .5f);
 			for (size_t x = x0; x < x1; ++x) {
 				float factor = rasterize_pixel(trapezoid, x);
 				Color color = shapes.get_color(Point(static_cast<float>(x) + .5f, static_cast<float>(y) + .5f));
