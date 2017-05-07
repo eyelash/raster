@@ -20,7 +20,17 @@ struct Point {
 	constexpr Point operator +(const Point& p) const {
 		return Point(x + p.x, y + p.y);
 	}
+	constexpr Point operator -(const Point& p) const {
+		return Point(x - p.x, y - p.y);
+	}
+	constexpr Point operator *(float f) const {
+		return Point(x * f, y * f);
+	}
 };
+
+constexpr float dot(const Point& p0, const Point& p1) {
+	return p0.x * p1.x + p0.y * p1.y;
+}
 
 struct Line {
 	float m, x0;
@@ -71,6 +81,43 @@ struct SolidFill: Fill {
 	SolidFill(const Color& color): color(color) {}
 	Color evaluate(const Point& point) override {
 		return color;
+	}
+};
+
+struct Gradient {
+	struct Stop {
+		Color color;
+		float pos;
+	};
+	std::vector<Stop> stops;
+	Gradient(std::initializer_list<Stop> stops): stops(stops) {}
+	Color evaluate(float pos) {
+		if (pos <= stops.front().pos) {
+			return stops.front().color;
+		}
+		if (pos >= stops.back().pos) {
+			return stops.back().color;
+		}
+		for (size_t i = 1; i < stops.size(); ++i) {
+			if (pos <= stops[i].pos) {
+				float factor = (pos - stops[i-1].pos) / (stops[i].pos - stops[i-1].pos);
+				return stops[i-1].color * (1.f - factor) + stops[i].color * factor;
+			}
+		}
+		return Color();
+	}
+};
+
+struct LinearGradientFill: Fill {
+	Gradient gradient;
+	Point start;
+	Point matrix;
+	static constexpr Point get_matrix(const Point& start, const Point& d) {
+		return d * (1.f / dot(d, d));
+	}
+	LinearGradientFill(const Point& start, const Point& end, std::initializer_list<Gradient::Stop> stops): gradient(stops), start(start), matrix(get_matrix(start, end - start)) {}
+	Color evaluate(const Point& point) override {
+		return gradient.evaluate(dot(matrix, point - start));
 	}
 };
 
@@ -319,7 +366,7 @@ Pixmap rasterize(const std::vector<Shape>& shapes, size_t width, size_t height) 
 					strip.lines.push_back(segment.get_line());
 				}
 			}
-			float cy = y0 + (y1 - y0) * .5f;
+			const float cy = y0 + (y1 - y0) * .5f;
 			std::sort(strip.lines.begin(), strip.lines.end(), [cy](const Line& l0, const Line& l1) {
 				return l0.get_x(cy) < l1.get_x(cy);
 			});
