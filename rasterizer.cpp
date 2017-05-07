@@ -5,6 +5,7 @@ All rights reserved.
 
 */
 
+#include "rasterizer.hpp"
 #include <vector>
 #include <map>
 #include <algorithm>
@@ -13,120 +14,6 @@ All rights reserved.
 #include <png.h>
 
 namespace {
-
-struct Point {
-	float x, y;
-	constexpr Point(float x, float y): x(x), y(y) {}
-	constexpr Point operator +(const Point& p) const {
-		return Point(x + p.x, y + p.y);
-	}
-	constexpr Point operator -(const Point& p) const {
-		return Point(x - p.x, y - p.y);
-	}
-	constexpr Point operator *(float f) const {
-		return Point(x * f, y * f);
-	}
-};
-
-constexpr float dot(const Point& p0, const Point& p1) {
-	return p0.x * p1.x + p0.y * p1.y;
-}
-
-struct Line {
-	float m, x0;
-	constexpr Line(float m, const Point& p): m(m), x0(p.x - m * p.y) {}
-	constexpr Line(const Point& p0, const Point& p1): Line((p1.x - p0.x) / (p1.y - p0.y), p0) {}
-	constexpr Line(float x): m(0.f), x0(x) {}
-	constexpr float get_x(float y) const {
-		return m * y + x0;
-	}
-};
-
-constexpr float intersect(const Line& l0, const Line& l1) {
-	return (l1.x0 - l0.x0) / (l0.m - l1.m);
-}
-
-struct Segment {
-	float y0, y1;
-	Line line;
-	constexpr Segment(const Point& p0, const Point& p1): y0(p0.y), y1(p1.y), line(p0, p1) {}
-	constexpr Segment(float y0, float y1, const Line& line): y0(y0), y1(y1), line(line) {}
-};
-
-struct Color {
-	float r, g, b, a;
-	constexpr Color(float r, float g, float b, float a = 1.f): r(r), g(g), b(b), a(a) {}
-	constexpr Color(): Color(0.f, 0.f, 0.f, 0.f) {}
-	constexpr Color operator +(const Color& c) const {
-		return Color(r + c.r, g + c.g, b + c.b, a + c.a);
-	}
-	constexpr Color operator *(float f) const {
-		return Color(r * f, g * f, b * f, a * f);
-	}
-	constexpr Color unpremultiply() const {
-		return a == 0.f ? Color() : Color(r/a, g/a, b/a, a);
-	}
-};
-
-constexpr Color blend(const Color& dst, const Color& src) {
-	return src + dst * (1.f - src.a);
-}
-
-struct Fill {
-	virtual Color evaluate(const Point& point) = 0;
-};
-
-struct SolidFill: Fill {
-	Color color;
-	SolidFill(const Color& color): color(color) {}
-	Color evaluate(const Point& point) override {
-		return color;
-	}
-};
-
-struct Gradient {
-	struct Stop {
-		Color color;
-		float pos;
-	};
-	std::vector<Stop> stops;
-	Gradient(std::initializer_list<Stop> stops): stops(stops) {}
-	Color evaluate(float pos) {
-		if (pos <= stops.front().pos) {
-			return stops.front().color;
-		}
-		if (pos >= stops.back().pos) {
-			return stops.back().color;
-		}
-		for (size_t i = 1; i < stops.size(); ++i) {
-			if (pos <= stops[i].pos) {
-				float factor = (pos - stops[i-1].pos) / (stops[i].pos - stops[i-1].pos);
-				return stops[i-1].color * (1.f - factor) + stops[i].color * factor;
-			}
-		}
-		return Color();
-	}
-};
-
-struct LinearGradientFill: Fill {
-	Gradient gradient;
-	Point start;
-	Point matrix;
-	static constexpr Point get_matrix(const Point& start, const Point& d) {
-		return d * (1.f / dot(d, d));
-	}
-	LinearGradientFill(const Point& start, const Point& end, std::initializer_list<Gradient::Stop> stops): gradient(stops), start(start), matrix(get_matrix(start, end - start)) {}
-	Color evaluate(const Point& point) override {
-		return gradient.evaluate(dot(matrix, point - start));
-	}
-};
-
-struct Shape {
-	std::vector<Segment> segments;
-	Fill* fill;
-	int index;
-	Shape(Fill* fill, int index): fill(fill), index(index) {}
-};
 
 struct ShapeCompare {
 	bool operator ()(const Shape* s0, const Shape* s1) {
@@ -324,7 +211,9 @@ void rasterize_strip(const Strip& strip, Pixmap& pixmap) {
 	}
 }
 
-Pixmap rasterize(const std::vector<Shape>& shapes, size_t width, size_t height) {
+}
+
+void rasterize(const std::vector<Shape>& shapes, const char* file_name, size_t width, size_t height) {
 	std::vector<RasterizeSegment> segments;
 	std::vector<float> ys;
 
@@ -373,81 +262,5 @@ Pixmap rasterize(const std::vector<Shape>& shapes, size_t width, size_t height) 
 			rasterize_strip(strip, pixmap);
 		}
 	}
-	return pixmap;
-}
-
-struct Subpath {
-	std::vector<Point> points;
-	bool closed;
-	Subpath(): points(), closed(false) {}
-};
-
-struct Path {
-	std::vector<Subpath> subpaths;
-	void move_to(const Point& p) {
-		subpaths.push_back(Subpath());
-		subpaths.back().points.push_back(p);
-	}
-	void move_to(float x, float y) {
-		move_to(Point(x, y));
-	}
-	void line_to(const Point& p) {
-		subpaths.back().points.push_back(p);
-	}
-	void line_to(float x, float y) {
-		line_to(Point(x, y));
-	}
-	void close() {
-		subpaths.back().closed = true;
-	}
-};
-
-struct Document {
-	std::vector<Shape> shapes;
-	void append_segment(const Point& p0, const Point& p1) {
-		if (p0.y != p1.y) {
-			shapes.back().segments.push_back(Segment(p0, p1));
-		}
-	}
-	void fill(const Path& path, Fill* fill) {
-		int index = shapes.size();
-		shapes.push_back(Shape(fill, index));
-		for (const Subpath& subpath: path.subpaths) {
-			const std::vector<Point>& points = subpath.points;
-			for (size_t i = 1; i < points.size(); ++i) {
-				append_segment(points[i-1], points[i]);
-			}
-			append_segment(points.back(), points.front());
-		}
-	}
-};
-
-}
-
-int main() {
-	Document document;
-	SolidFill blue(Color(0, 0, 1) * .85f);
-	SolidFill yellow(Color(1, 1, 0) * .75f);
-
-	{
-		Path path;
-		path.move_to( 50, 250);
-		path.line_to(100,  50);
-		path.line_to(150, 150);
-		path.line_to(200, 100);
-		path.line_to(250, 200);
-		path.close();
-		document.fill(path, &blue);
-	}
-	{
-		Path path;
-		path.move_to(100, 200);
-		path.line_to(100,  50);
-		path.line_to( 50, 150);
-		path.close();
-		document.fill(path, &yellow);
-	}
-
-	Pixmap pixmap = rasterize(document.shapes, 300, 300);
-	pixmap.write("result.png");
+	pixmap.write(file_name);
 }

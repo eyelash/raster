@@ -1,7 +1,7 @@
 CXXFLAGS = -std=c++11 -Wall -O2
 LDLIBS = -lpng
 
-raster: raster.cpp
+raster: main.cpp rasterizer.cpp
 	$(CXX) -o $@ $(CPPFLAGS) $(CXXFLAGS) $(LDFLAGS) $^ $(LDLIBS)
 
 clean:
