@@ -97,3 +97,38 @@ struct LinearGradientFill: Fill {
 		return gradient.evaluate(dot(matrix, point - start));
 	}
 };
+
+struct Transformation {
+	// +-     -+
+	// | a c e |
+	// | b d f |
+	// | 0 0 1 |
+	// +-     -+
+	float a, b, c, d, e, f;
+	constexpr Transformation(float a, float b, float c, float d, float e, float f): a(a), b(b), c(c), d(d), e(e), f(f) {}
+	constexpr Transformation(): Transformation(1.f, 0.f, 0.f, 1.f, 0.f, 0.f) {}
+	static constexpr Transformation scale(float x, float y) {
+		return Transformation(x, 0.f, 0.f, y, 0.f, 0.f);
+	}
+	static constexpr Transformation translate(float x, float y) {
+		return Transformation(1.f, 0.f, 0.f, 1.f, x, y);
+	}
+};
+
+inline constexpr Point operator *(const Transformation& t, const Point& p) {
+	return Point(
+		t.a * p.x + t.c * p.y + t.e,
+		t.b * p.x + t.d * p.y + t.f
+	);
+}
+
+inline constexpr Transformation operator *(const Transformation& t0, const Transformation& t1) {
+	return Transformation(
+		t0.a * t1.a + t0.c * t1.b,
+		t0.b * t1.a + t0.d * t1.b,
+		t0.a * t1.c + t0.c * t1.d,
+		t0.b * t1.c + t0.d * t1.d,
+		t0.a * t1.e + t0.c * t1.f + t0.e,
+		t0.b * t1.e + t0.d * t1.f + t0.f
+	);
+}
