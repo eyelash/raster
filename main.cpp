@@ -5,31 +5,26 @@ All rights reserved.
 
 */
 
-#include "document.hpp"
+#include "parser.hpp"
+#include <string>
+#include <fstream>
+#include <iostream>
 
-int main() {
-	Document document;
-	SolidFill blue(Color(0, 0, 1) * .85f);
-	SolidFill yellow(Color(1, 1, 0) * .75f);
+std::string read_file(const char* file_name) {
+	std::ifstream file(file_name);
+	return std::string(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+}
 
-	{
-		Path path;
-		path.move_to( 50, 250);
-		path.line_to(100,  50);
-		path.line_to(150, 150);
-		path.line_to(200, 100);
-		path.line_to(250, 200);
-		path.close();
-		document.fill(path, &blue);
+int main(int argc, char** argv) {
+	if (argc <= 2) {
+		std::cout << "usage: raster <input> <output>" << std::endl;
+		return 0;
 	}
-	{
-		Path path;
-		path.move_to(100, 200);
-		path.line_to(100,  50);
-		path.line_to( 50, 150);
-		path.close();
-		document.fill(path, &yellow);
+	std::string svg = read_file(argv[1]);
+	try {
+		Document document = parse(svg);
+		rasterize(document.shapes, argv[2], document.width, document.height);
+	} catch (const std::string& error) {
+		std::cerr << "error: " << error << std::endl;
 	}
-
-	rasterize(document.shapes, "result.png", 300, 300);
 }

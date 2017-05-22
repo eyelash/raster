@@ -62,3 +62,5 @@ public:
 		return std::string(s, size);
 	}
 };
+
+Document parse(const StringView& svg);

@@ -17,6 +17,9 @@ public:
 	Parser copy() const {
 		return Parser(s);
 	}
+	bool has_next() const {
+		return s.has_next();
+	}
 	template <class F> bool parse(F&& f) {
 		if (!s.has_next()) return false;
 		StringView copy = s;
@@ -50,7 +53,7 @@ public:
 	bool parse(const char* prefix) {
 		return parse(StringView(prefix));
 	}
-	void error(std::string message) {
+	[[noreturn]] void error(std::string message) {
 		throw message;
 	}
 	void expect(const StringView& s) {
@@ -233,3 +236,141 @@ public:
 		return get() - start;
 	}
 };
+
+class PathParser: public Parser {
+	Path& path;
+	const Transformation& t;
+	Point parse_point() {
+		float x = parse_number(*this);
+		parse_all(white_space_or_comma);
+		float y = parse_number(*this);
+		return Point(x, y);
+	}
+	using Parser::parse;
+public:
+	PathParser(const StringView& s, Path& path, const Transformation& t): Parser(s), path(path), t(t) {}
+	void parse() {
+		parse_all(white_space);
+		while (has_next()) {
+			if (parse('M')) {
+				parse_all(white_space);
+				path.move_to(t * parse_point());
+				parse_all(white_space);
+				while (copy().parse(numeric)) {
+					path.line_to(t * parse_point());
+					parse_all(white_space);
+				}
+			}
+			else if (parse('L')) {
+				parse_all(white_space);
+				path.line_to(t * parse_point());
+				parse_all(white_space);
+				while (copy().parse(numeric)) {
+					path.line_to(t * parse_point());
+					parse_all(white_space);
+				}
+			}
+			else if(parse('Z') || parse('z')) {
+				path.close();
+				parse_all(white_space);
+			}
+			else {
+				error("unexpected command");
+			}
+		}
+	}
+};
+
+static SolidFill fill(Color(1, 1, 1) * .7f);
+
+class SVGParser: public XMLParser {
+	Document& document;
+	Transformation transformation;
+	void skip_tag() {
+		StringView name = parse_start_tag();
+		parse_attributes([](const StringView& name, const StringView& value) {});
+		while (!next_is_end_tag()) {
+			if (next_is_comment()) parse_comment();
+			else if (next_is_start_tag()) skip_tag();
+			else parse_char_data();
+		}
+		parse_end_tag(name);
+	}
+	void parse_tag() {
+		StringView name = parse_start_tag();
+		if (name == "path") {
+			Path path;
+			parse_attributes([&](const StringView& name, const StringView& value) {
+				if (name == "d") {
+					PathParser p(value, path, transformation);
+					p.parse();
+				}
+			});
+			document.fill(path, &fill);
+			while (!next_is_end_tag()) {
+				if (next_is_comment()) parse_comment();
+				else if (next_is_start_tag()) skip_tag();
+				else parse_char_data();
+			}
+		}
+		else {
+			parse_attributes([](const StringView& name, const StringView& value) {});
+			while (!next_is_end_tag()) {
+				if (next_is_comment()) parse_comment();
+				else if (next_is_start_tag()) skip_tag();
+				else parse_char_data();
+			}
+		}
+		parse_end_tag(name);
+	}
+public:
+	SVGParser(const StringView& s, Document& document): XMLParser(s), document(document) {}
+	void parse() {
+		skip_prolog();
+		StringView name = parse_start_tag();
+		if (name != "svg") error("expected svg tag");
+		struct {
+			float x, y;
+			float width, height;
+		} view_box;
+		bool has_view_box = false;
+		parse_attributes([&](const StringView& name, const StringView& value) {
+			if (name == "viewBox") {
+				Parser p(value);
+				p.parse_all(::white_space);
+				view_box.x = parse_number(p);
+				p.parse_all(white_space_or_comma);
+				view_box.y = parse_number(p);
+				p.parse_all(white_space_or_comma);
+				view_box.width = parse_number(p);
+				p.parse_all(white_space_or_comma);
+				view_box.height = parse_number(p);
+				has_view_box = true;
+			}
+			else if (name == "width") {
+				Parser p(value);
+				document.width = parse_number(p);
+			}
+			else if (name == "height") {
+				Parser p(value);
+				document.height = parse_number(p);
+			}
+		});
+		if (has_view_box) {
+			transformation = Transformation::scale(document.width/view_box.width, document.height/view_box.height) * Transformation::translate(-view_box.x, -view_box.y);
+		}
+		while (!next_is_end_tag()) {
+			if (next_is_comment()) parse_comment();
+			else if (next_is_start_tag()) parse_tag();
+			else parse_char_data();
+		}
+		parse_end_tag(name);
+	}
+};
+
+Document parse(const StringView& svg) {
+	Document document;
+	SVGParser parser(svg, document);
+	parser.parse();
+	return document;
+}
