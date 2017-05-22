@@ -281,6 +281,106 @@ public:
 	}
 };
 
+class TransformParser: public Parser {
+	using Parser::parse;
+public:
+	TransformParser(const StringView& s): Parser(s) {}
+	Transformation parse() {
+		Transformation t;
+		parse_all(white_space);
+		while (has_next()) {
+			if (parse("matrix")) {
+				parse_all(white_space);
+				expect("(");
+				parse_all(white_space);
+				const float a = parse_number(*this);
+				parse_all(white_space_or_comma);
+				const float b = parse_number(*this);
+				parse_all(white_space_or_comma);
+				const float c = parse_number(*this);
+				parse_all(white_space_or_comma);
+				const float d = parse_number(*this);
+				parse_all(white_space_or_comma);
+				const float e = parse_number(*this);
+				parse_all(white_space_or_comma);
+				const float f = parse_number(*this);
+				parse_all(white_space);
+				expect(")");
+				t = t * Transformation(a, b, c, d, e, f);
+			}
+			else if (parse("translate")) {
+				parse_all(white_space);
+				expect("(");
+				parse_all(white_space);
+				const float x = parse_number(*this);
+				parse_all(white_space_or_comma);
+				float y = 0.f;
+				if (copy().parse(numeric)) {
+					y = parse_number(*this);
+					parse_all(white_space);
+				}
+				expect(")");
+				t = t * Transformation::translate(x, y);
+			}
+			else if (parse("scale")) {
+				parse_all(white_space);
+				expect("(");
+				parse_all(white_space);
+				const float x = parse_number(*this);
+				parse_all(white_space_or_comma);
+				float y = x;
+				if (copy().parse(numeric)) {
+					y = parse_number(*this);
+					parse_all(white_space);
+				}
+				expect(")");
+				t = t * Transformation::scale(x, y);
+			}
+			else if (parse("rotate")) {
+				parse_all(white_space);
+				expect("(");
+				parse_all(white_space);
+				const float a = parse_number(*this) * (M_PI / 180.f);
+				parse_all(white_space);
+				if (copy().parse(numeric)) {
+					const float x = parse_number(*this);
+					parse_all(white_space_or_comma);
+					const float y = parse_number(*this);
+					parse_all(white_space);
+					t = t * Transformation::translate(x, y) * Transformation::rotate(a) * Transformation::translate(-x, -y);
+				}
+				else {
+					t = t * Transformation::rotate(a);
+				}
+				expect(")");
+			}
+			else if (parse("skewX")) {
+				parse_all(white_space);
+				expect("(");
+				parse_all(white_space);
+				const float a = parse_number(*this) * (M_PI / 180.f);
+				parse_all(white_space);
+				expect(")");
+				t = t * Transformation(1.f, 0.f, std::tan(a), 1.f, 0.f, 0.f);
+			}
+			else if (parse("skewY")) {
+				parse_all(white_space);
+				expect("(");
+				parse_all(white_space);
+				const float a = parse_number(*this) * (M_PI / 180.f);
+				parse_all(white_space);
+				expect(")");
+				t = t * Transformation(1.f, std::tan(a), 0.f, 1.f, 0.f, 0.f);
+			}
+			else {
+				error("unexpected transformation");
+			}
+			parse_all(white_space);
+		}
+		return t;
+	}
+};
+
 static SolidFill fill(Color(1, 1, 1) * .7f);
 
 class SVGParser: public XMLParser {
@@ -312,6 +412,21 @@ class SVGParser: public XMLParser {
 				else if (next_is_start_tag()) skip_tag();
 				else parse_char_data();
 			}
+		}
+		if (name == "g") {
+			Transformation previous_transformation = transformation;
+			parse_attributes([&](const StringView& name, const StringView& value) {
+				if (name == "transform") {
+					TransformParser p(value);
+					transformation = transformation * p.parse();
+				}
+			});
+			while (!next_is_end_tag()) {
+				if (next_is_comment()) parse_comment();
+				else if (next_is_start_tag()) parse_tag();
+				else parse_char_data();
+			}
+			transformation = previous_transformation;
 		}
 		else {
 			parse_attributes([](const StringView& name, const StringView& value) {});

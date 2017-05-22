@@ -6,6 +6,7 @@ All rights reserved.
 */
 
 #include "rasterizer.hpp"
+#include <cmath>
 
 struct Subpath {
 	std::vector<Point> points;
@@ -113,6 +114,11 @@ struct Transformation {
 	}
 	static constexpr Transformation translate(float x, float y) {
 		return Transformation(1.f, 0.f, 0.f, 1.f, x, y);
+	}
+	static Transformation rotate(float a) {
+		const float c = std::cos(a);
+		const float s = std::sin(a);
+		return Transformation(c, s, -s, c, 0.f, 0.f);
 	}
 };
 
