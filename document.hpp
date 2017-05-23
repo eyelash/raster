@@ -16,6 +16,18 @@ struct Subpath {
 
 struct Path {
 	std::vector<Subpath> subpaths;
+	Point current_point() const {
+		if (subpaths.empty()) {
+			return Point(0.f, 0.f);
+		}
+		const Subpath& subpath = subpaths.back();
+		if (subpath.closed) {
+			return subpath.points.front();
+		}
+		else {
+			return subpath.points.back();
+		}
+	}
 	void move_to(const Point& p) {
 		subpaths.push_back(Subpath());
 		subpaths.back().points.push_back(p);
@@ -23,11 +35,20 @@ struct Path {
 	void move_to(float x, float y) {
 		move_to(Point(x, y));
 	}
+	void move_to_relative(const Point& p) {
+		move_to(current_point() + p);
+	}
 	void line_to(const Point& p) {
+		if (subpaths.empty() || subpaths.back().closed) {
+			move_to(current_point());
+		}
 		subpaths.back().points.push_back(p);
 	}
 	void line_to(float x, float y) {
 		line_to(Point(x, y));
+	}
+	void line_to_relative(const Point& p) {
+		line_to(current_point() + p);
 	}
 	void close() {
 		subpaths.back().closed = true;
@@ -122,14 +143,14 @@ struct Transformation {
 	}
 };
 
-inline constexpr Point operator *(const Transformation& t, const Point& p) {
+constexpr Point operator *(const Transformation& t, const Point& p) {
 	return Point(
 		t.a * p.x + t.c * p.y + t.e,
 		t.b * p.x + t.d * p.y + t.f
 	);
 }
 
-inline constexpr Transformation operator *(const Transformation& t0, const Transformation& t1) {
+constexpr Transformation operator *(const Transformation& t0, const Transformation& t1) {
 	return Transformation(
 		t0.a * t1.a + t0.c * t1.b,
 		t0.b * t1.a + t0.d * t1.b,
@@ -138,4 +159,13 @@ inline constexpr Transformation operator *(const Transformation& t0, const Trans
 		t0.a * t1.e + t0.c * t1.f + t0.e,
 		t0.b * t1.e + t0.d * t1.f + t0.f
 	);
+}
+
+inline Path operator *(const Transformation& t, Path path) {
+	for (Subpath& subpath: path.subpaths) {
+		for (Point& p: subpath.points) {
+			p = t * p;
+		}
+	}
+	return path;
 }

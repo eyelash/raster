@@ -116,6 +116,10 @@ float parse_number(Parser& p) {
 	}
 }
 
+constexpr bool number_start_char(Character c) {
+	return numeric(c) || c == '-';
+}
+
 class XMLParser: public Parser {
 	static constexpr bool name_start_char(Character c) {
 		return c.between('a', 'z') || c.between('A', 'Z') || c == ':' || c == '_';
@@ -239,7 +243,6 @@ public:
 
 class PathParser: public Parser {
 	Path& path;
-	const Transformation& t;
 	Point parse_point() {
 		float x = parse_number(*this);
 		parse_all(white_space_or_comma);
@@ -248,29 +251,43 @@ class PathParser: public Parser {
 	}
 	using Parser::parse;
 public:
-	PathParser(const StringView& s, Path& path, const Transformation& t): Parser(s), path(path), t(t) {}
+	PathParser(const StringView& s, Path& path): Parser(s), path(path) {}
 	void parse() {
 		parse_all(white_space);
 		while (has_next()) {
 			if (parse('M')) {
 				parse_all(white_space);
-				path.move_to(t * parse_point());
+				path.move_to(parse_point());
+				parse_all(white_space_or_comma);
+				while (copy().parse(number_start_char)) {
+					path.line_to(parse_point());
+					parse_all(white_space_or_comma);
+				}
+			}
+			if (parse('m')) {
 				parse_all(white_space);
-				while (copy().parse(numeric)) {
-					path.line_to(t * parse_point());
-					parse_all(white_space);
+				path.move_to_relative(parse_point());
+				parse_all(white_space_or_comma);
+				while (copy().parse(number_start_char)) {
+					path.line_to_relative(parse_point());
+					parse_all(white_space_or_comma);
 				}
 			}
 			else if (parse('L')) {
 				parse_all(white_space);
-				path.line_to(t * parse_point());
-				parse_all(white_space);
-				while (copy().parse(numeric)) {
-					path.line_to(t * parse_point());
-					parse_all(white_space);
+				while (copy().parse(number_start_char)) {
+					path.line_to(parse_point());
+					parse_all(white_space_or_comma);
 				}
 			}
-			else if(parse('Z') || parse('z')) {
+			else if (parse('l')) {
+				parse_all(white_space);
+				while (copy().parse(number_start_char)) {
+					path.line_to_relative(parse_point());
+					parse_all(white_space_or_comma);
+				}
+			}
+			else if (parse('Z') || parse('z')) {
 				path.close();
 				parse_all(white_space);
 			}
@@ -315,7 +332,7 @@ public:
 				const float x = parse_number(*this);
 				parse_all(white_space_or_comma);
 				float y = 0.f;
-				if (copy().parse(numeric)) {
+				if (copy().parse(number_start_char)) {
 					y = parse_number(*this);
 					parse_all(white_space);
 				}
@@ -329,7 +346,7 @@ public:
 				const float x = parse_number(*this);
 				parse_all(white_space_or_comma);
 				float y = x;
-				if (copy().parse(numeric)) {
+				if (copy().parse(number_start_char)) {
 					y = parse_number(*this);
 					parse_all(white_space);
 				}
@@ -342,7 +359,7 @@ public:
 				parse_all(white_space);
 				const float a = parse_number(*this) * (M_PI / 180.f);
 				parse_all(white_space);
-				if (copy().parse(numeric)) {
+				if (copy().parse(number_start_char)) {
 					const float x = parse_number(*this);
 					parse_all(white_space_or_comma);
 					const float y = parse_number(*this);
@@ -402,11 +419,11 @@ class SVGParser: public XMLParser {
 			Path path;
 			parse_attributes([&](const StringView& name, const StringView& value) {
 				if (name == "d") {
-					PathParser p(value, path, transformation);
+					PathParser p(value, path);
 					p.parse();
 				}
 			});
-			document.fill(path, &fill);
+			document.fill(transformation * path, &fill);
 			while (!next_is_end_tag()) {
 				if (next_is_comment()) parse_comment();
 				else if (next_is_start_tag()) skip_tag();
