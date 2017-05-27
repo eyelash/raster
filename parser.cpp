@@ -298,6 +298,86 @@ public:
 	}
 };
 
+class StyleParser: public Parser {
+	Style& style;
+	std::shared_ptr<Paint> parse_paint() {
+		if (parse('#')) {
+			int d[6];
+			int i = 0;
+			parse_all([&](Character c) {
+				if (c.between('0', '9') || c.between('a', 'f') || c.between('A', 'F')) {
+					if (i < 6) {
+						d[i] = c.get_digit();
+					}
+					++i;
+					return true;
+				}
+				return false;
+			});
+			if (i == 6) {
+				const float red = (d[0] << 4 | d[1]) / 255.f;
+				const float green = (d[2] << 4 | d[3]) / 255.f;
+				const float blue = (d[4] << 4 | d[5]) / 255.f;
+				return std::make_shared<ColorPaint>(Color(red, green, blue));
+			}
+			else if (i == 3) {
+				const float red = d[0] / 15.f;
+				const float green = d[0] / 15.f;
+				const float blue = d[0] / 15.f;
+				return std::make_shared<ColorPaint>(Color(red, green, blue));
+			}
+			else {
+				error("expected 3 or 6 digits");
+			}
+		}
+		else if (parse("rgb")) {
+			expect("(");
+			parse_all(white_space);
+			float red = parse_number(*this);
+			if (parse('%')) {
+				red /= 100.f;
+			}
+			else {
+				red /= 255.f;
+			}
+			parse_all(white_space);
+			expect(",");
+			parse_all(white_space);
+			float green = parse_number(*this);
+			if (parse('%')) {
+				green /= 100.f;
+			}
+			else {
+				green /= 255.f;
+			}
+			parse_all(white_space);
+			expect(",");
+			parse_all(white_space);
+			float blue = parse_number(*this);
+			if (parse('%')) {
+				blue /= 100.f;
+			}
+			else {
+				blue /= 255.f;
+			}
+			parse_all(white_space);
+			expect(")");
+			return std::make_shared<ColorPaint>(Color(red, green, blue));
+		}
+		else {
+			error("invalid paint");
+		}
+	}
+public:
+	StyleParser(const StringView& s, Style& style): Parser(s), style(style) {}
+	void parse_fill() {
+		style.fill = parse_paint();
+	}
+	void parse_fill_opacity() {
+		style.fill_opacity = parse_number(*this);
+	}
+};
+
 class TransformParser: public Parser {
 	using Parser::parse;
 public:
@@ -398,8 +478,6 @@ public:
 	}
 };
 
-static SolidFill fill(Color(1, 1, 1) * .7f);
-
 class SVGParser: public XMLParser {
 	Document& document;
 	Transformation transformation;
@@ -417,13 +495,22 @@ class SVGParser: public XMLParser {
 		StringView name = parse_start_tag();
 		if (name == "path") {
 			Path path;
+			Style style;
 			parse_attributes([&](const StringView& name, const StringView& value) {
 				if (name == "d") {
 					PathParser p(value, path);
 					p.parse();
 				}
+				else if (name == "fill") {
+					StyleParser p(value, style);
+					p.parse_fill();
+				}
+				else if (name == "fill-opacity") {
+					StyleParser p(value, style);
+					p.parse_fill_opacity();
+				}
 			});
-			document.fill(transformation * path, &fill);
+			document.draw(transformation * path, style);
 			while (!next_is_end_tag()) {
 				if (next_is_comment()) parse_comment();
 				else if (next_is_start_tag()) skip_tag();

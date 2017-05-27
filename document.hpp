@@ -55,30 +55,9 @@ struct Path {
 	}
 };
 
-struct Document {
-	std::vector<Shape> shapes;
-	float width, height;
-	void append_segment(const Point& p0, const Point& p1) {
-		if (p0.y != p1.y) {
-			shapes.back().segments.push_back(Segment(p0, p1));
-		}
-	}
-	void fill(const Path& path, Fill* fill) {
-		int index = shapes.size();
-		shapes.push_back(Shape(fill, index));
-		for (const Subpath& subpath: path.subpaths) {
-			const std::vector<Point>& points = subpath.points;
-			for (size_t i = 1; i < points.size(); ++i) {
-				append_segment(points[i-1], points[i]);
-			}
-			append_segment(points.back(), points.front());
-		}
-	}
-};
-
-struct SolidFill: Fill {
+struct ColorPaint: Paint {
 	Color color;
-	SolidFill(const Color& color): color(color) {}
+	ColorPaint(const Color& color): color(color) {}
 	Color evaluate(const Point& point) override {
 		return color;
 	}
@@ -108,16 +87,57 @@ struct Gradient {
 	}
 };
 
-struct LinearGradientFill: Fill {
+struct LinearGradientPaint: Paint {
 	Gradient gradient;
 	Point start;
 	Point matrix;
 	static constexpr Point get_matrix(const Point& start, const Point& d) {
 		return d * (1.f / dot(d, d));
 	}
-	LinearGradientFill(const Point& start, const Point& end, std::initializer_list<Gradient::Stop> stops): gradient(stops), start(start), matrix(get_matrix(start, end - start)) {}
+	LinearGradientPaint(const Point& start, const Point& end, std::initializer_list<Gradient::Stop> stops): gradient(stops), start(start), matrix(get_matrix(start, end - start)) {}
 	Color evaluate(const Point& point) override {
 		return gradient.evaluate(dot(matrix, point - start));
+	}
+};
+
+struct OpacityPaint: Paint {
+	std::shared_ptr<Paint> paint;
+	float opacity;
+	OpacityPaint(const std::shared_ptr<Paint>& paint, float opacity): paint(paint), opacity(opacity) {}
+	Color evaluate(const Point& point) override {
+		return paint->evaluate(point) * opacity;
+	}
+};
+
+struct Style {
+	std::shared_ptr<Paint> fill;
+	float fill_opacity;
+	Style(): fill_opacity(1.f) {}
+};
+
+struct Document {
+	std::vector<Shape> shapes;
+	float width, height;
+	void append_segment(const Point& p0, const Point& p1) {
+		if (p0.y != p1.y) {
+			shapes.back().segments.push_back(Segment(p0, p1));
+		}
+	}
+	void fill(const Path& path, const std::shared_ptr<Paint>& paint) {
+		const int index = shapes.size();
+		shapes.push_back(Shape(paint, index));
+		for (const Subpath& subpath: path.subpaths) {
+			const std::vector<Point>& points = subpath.points;
+			for (size_t i = 1; i < points.size(); ++i) {
+				append_segment(points[i-1], points[i]);
+			}
+			append_segment(points.back(), points.front());
+		}
+	}
+	void draw(const Path& path, const Style& style) {
+		if (style.fill) {
+			fill(path, std::make_shared<OpacityPaint>(style.fill, style.fill_opacity));
+		}
 	}
 };
 

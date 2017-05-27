@@ -19,7 +19,7 @@ public:
 		return c >= min.c && c <= max.c;
 	}
 	constexpr int get_digit() const {
-		return c - '0';
+		return between('0', '9') ? c - '0' : (between('a', 'f') ? c - 'a' + 10 : (between('A', 'F') ? c - 'A' + 10 : -1));
 	}
 };
 

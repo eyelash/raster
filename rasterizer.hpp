@@ -7,6 +7,7 @@ All rights reserved.
 
 #include <vector>
 #include <cstddef>
+#include <memory>
 
 struct Point {
 	float x, y;
@@ -66,15 +67,15 @@ constexpr Color blend(const Color& dst, const Color& src) {
 	return src + dst * (1.f - src.a);
 }
 
-struct Fill {
+struct Paint {
 	virtual Color evaluate(const Point& point) = 0;
 };
 
 struct Shape {
 	std::vector<Segment> segments;
-	Fill* fill;
+	std::shared_ptr<Paint> paint;
 	int index;
-	Shape(Fill* fill, int index): fill(fill), index(index) {}
+	Shape(const std::shared_ptr<Paint>& paint, int index): paint(paint), index(index) {}
 };
 
 void rasterize(const std::vector<Shape>& shapes, const char* file_name, size_t width, size_t height);

@@ -25,7 +25,7 @@ struct ShapeMap: std::map<const Shape*, int, ShapeCompare> {
 	Color get_color(const Point& point) const {
 		Color color;
 		for (auto& pair: *this) {
-			color = blend(color, pair.first->fill->evaluate(point));
+			color = blend(color, pair.first->paint->evaluate(point));
 		}
 		return color;
 	}
