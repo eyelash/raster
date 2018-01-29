@@ -1,12 +1,26 @@
 /*
 
-Copyright (c) 2017, Elias Aebi
+Copyright (c) 2017-2018, Elias Aebi
 All rights reserved.
 
 */
 
 #include "rasterizer.hpp"
 #include <cmath>
+
+struct CubicBezierCurve {
+	Point p0, p1, p2, p3;
+	constexpr CubicBezierCurve(const Point& p0, const Point& p1, const Point& p2, const Point& p3): p0(p0), p1(p1), p2(p2), p3(p3) {}
+	static constexpr Point reject(const Point& a, const Point& b) {
+		return a - b * (dot(a, b) / dot(b, b));
+	}
+	float get_error_squared() const {
+		const Point d = p3 - p0;
+		const Point e1 = reject(p1 - p0, d);
+		const Point e2 = reject(p2 - p0, d);
+		return std::max(dot(e1, e1), dot(e2, e2)) * dot(d, d);
+	}
+};
 
 struct Subpath {
 	std::vector<Point> points;
@@ -49,6 +63,23 @@ struct Path {
 	}
 	void line_to_relative(const Point& p) {
 		line_to(current_point() + p);
+	}
+	void curve_to(const Point& p1, const Point& p2, const Point& p3) {
+		const Point& p0 = current_point();
+		constexpr float tolerance = 1.f / 256.f;
+		if (CubicBezierCurve(p0, p1, p2, p3).get_error_squared() < tolerance * tolerance) {
+			line_to(p3);
+		}
+		else {
+			const Point p4 = (p0 + p1) * .5f;
+			const Point p5 = (p1 + p2) * .5f;
+			const Point p6 = (p2 + p3) * .5f;
+			const Point p7 = (p4 + p5) * .5f;
+			const Point p8 = (p5 + p6) * .5f;
+			const Point p9 = (p7 + p8) * .5f;
+			curve_to(p4, p7, p9);
+			curve_to(p8, p6, p3);
+		}
 	}
 	void close() {
 		subpaths.back().closed = true;
