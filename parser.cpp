@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2017, Elias Aebi
+Copyright (c) 2017-2018, Elias Aebi
 All rights reserved.
 
 */
@@ -247,49 +247,135 @@ class PathParser: public Parser {
 		float x = parse_number(*this);
 		parse_all(white_space_or_comma);
 		float y = parse_number(*this);
+		parse_all(white_space_or_comma);
 		return Point(x, y);
 	}
 	using Parser::parse;
 public:
 	PathParser(const StringView& s, Path& path): Parser(s), path(path) {}
 	void parse() {
+		Point current_point(0.f, 0.f);
+		Point initial_point(0.f, 0.f);
+		Point p2(0.f, 0.f);
 		parse_all(white_space);
 		while (has_next()) {
 			if (parse('M')) {
 				parse_all(white_space);
-				path.move_to(parse_point());
-				parse_all(white_space_or_comma);
+				current_point = parse_point();
+				path.move_to(current_point);
+				initial_point = current_point;
+				p2 = current_point;
 				while (copy().parse(number_start_char)) {
-					path.line_to(parse_point());
-					parse_all(white_space_or_comma);
+					current_point = parse_point();
+					path.line_to(current_point);
+					p2 = current_point;
 				}
 			}
-			if (parse('m')) {
+			else if (parse('m')) {
 				parse_all(white_space);
-				path.move_to_relative(parse_point());
-				parse_all(white_space_or_comma);
+				current_point = current_point + parse_point();
+				path.move_to(current_point);
+				initial_point = current_point;
+				p2 = current_point;
 				while (copy().parse(number_start_char)) {
-					path.line_to_relative(parse_point());
-					parse_all(white_space_or_comma);
+					current_point = current_point + parse_point();
+					path.line_to(current_point);
+					p2 = current_point;
 				}
 			}
 			else if (parse('L')) {
 				parse_all(white_space);
 				while (copy().parse(number_start_char)) {
-					path.line_to(parse_point());
-					parse_all(white_space_or_comma);
+					current_point = parse_point();
+					path.line_to(current_point);
+					p2 = current_point;
 				}
 			}
 			else if (parse('l')) {
 				parse_all(white_space);
 				while (copy().parse(number_start_char)) {
-					path.line_to_relative(parse_point());
+					current_point = current_point + parse_point();
+					path.line_to(current_point);
+					p2 = current_point;
+				}
+			}
+			else if (parse('H')) {
+				parse_all(white_space);
+				while (copy().parse(number_start_char)) {
+					current_point.x = parse_number(*this);
 					parse_all(white_space_or_comma);
+					path.line_to(current_point);
+					p2 = current_point;
+				}
+			}
+			else if (parse('h')) {
+				parse_all(white_space);
+				while (copy().parse(number_start_char)) {
+					current_point.x += parse_number(*this);
+					parse_all(white_space_or_comma);
+					path.line_to(current_point);
+					p2 = current_point;
+				}
+			}
+			else if (parse('V')) {
+				parse_all(white_space);
+				while (copy().parse(number_start_char)) {
+					current_point.y = parse_number(*this);
+					parse_all(white_space_or_comma);
+					path.line_to(current_point);
+					p2 = current_point;
+				}
+			}
+			else if (parse('v')) {
+				parse_all(white_space);
+				while (copy().parse(number_start_char)) {
+					current_point.y += parse_number(*this);
+					parse_all(white_space_or_comma);
+					path.line_to(current_point);
+					p2 = current_point;
+				}
+			}
+			else if (parse('C')) {
+				parse_all(white_space);
+				while (copy().parse(number_start_char)) {
+					const Point p1 = parse_point();
+					p2 = parse_point();
+					current_point = parse_point();
+					path.curve_to(p1, p2, current_point);
+				}
+			}
+			else if (parse('c')) {
+				parse_all(white_space);
+				while (copy().parse(number_start_char)) {
+					const Point p1 = current_point + parse_point();
+					p2 = current_point + parse_point();
+					current_point = current_point + parse_point();
+					path.curve_to(p1, p2, current_point);
+				}
+			}
+			else if (parse('S')) {
+				parse_all(white_space);
+				while (copy().parse(number_start_char)) {
+					const Point p1 = current_point * 2.f - p2;
+					p2 = parse_point();
+					current_point = parse_point();
+					path.curve_to(p1, p2, current_point);
+				}
+			}
+			else if (parse('s')) {
+				parse_all(white_space);
+				while (copy().parse(number_start_char)) {
+					const Point p1 = current_point * 2.f - p2;
+					p2 = current_point + parse_point();
+					current_point = current_point + parse_point();
+					path.curve_to(p1, p2, current_point);
 				}
 			}
 			else if (parse('Z') || parse('z')) {
-				path.close();
 				parse_all(white_space);
+				path.close();
+				current_point = initial_point;
+				p2 = current_point;
 			}
 			else {
 				error("unexpected command");
