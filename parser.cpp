@@ -384,9 +384,168 @@ public:
 	}
 };
 
+struct NamedColor {
+	StringView name;
+	Color color;
+	constexpr NamedColor(const StringView& name, const Color& color): name(name), color(color) {}
+	constexpr bool operator <(const StringView& rhs) const {
+		return name < rhs;
+	}
+};
+constexpr NamedColor color_names[] = {
+	NamedColor("red",                  Color::rgb(255,   0,   0)),
+	NamedColor("tan",                  Color::rgb(210, 180, 140)),
+	NamedColor("aqua",                 Color::rgb(  0, 255, 255)),
+	NamedColor("blue",                 Color::rgb(  0,   0, 255)),
+	NamedColor("cyan",                 Color::rgb(  0, 255, 255)),
+	NamedColor("gold",                 Color::rgb(255, 215,   0)),
+	NamedColor("gray",                 Color::rgb(128, 128, 128)),
+	NamedColor("grey",                 Color::rgb(128, 128, 128)),
+	NamedColor("lime",                 Color::rgb(  0, 255,   0)),
+	NamedColor("navy",                 Color::rgb(  0,   0, 128)),
+	NamedColor("peru",                 Color::rgb(205, 133,  63)),
+	NamedColor("pink",                 Color::rgb(255, 192, 203)),
+	NamedColor("plum",                 Color::rgb(221, 160, 221)),
+	NamedColor("snow",                 Color::rgb(255, 250, 250)),
+	NamedColor("teal",                 Color::rgb(  0, 128, 128)),
+	NamedColor("azure",                Color::rgb(240, 255, 255)),
+	NamedColor("beige",                Color::rgb(245, 245, 220)),
+	NamedColor("black",                Color::rgb(  0,   0,   0)),
+	NamedColor("brown",                Color::rgb(165,  42,  42)),
+	NamedColor("coral",                Color::rgb(255, 127,  80)),
+	NamedColor("green",                Color::rgb(  0, 128,   0)),
+	NamedColor("ivory",                Color::rgb(255, 255, 240)),
+	NamedColor("khaki",                Color::rgb(240, 230, 140)),
+	NamedColor("linen",                Color::rgb(250, 240, 230)),
+	NamedColor("olive",                Color::rgb(128, 128,   0)),
+	NamedColor("wheat",                Color::rgb(245, 222, 179)),
+	NamedColor("white",                Color::rgb(255, 255, 255)),
+	NamedColor("bisque",               Color::rgb(255, 228, 196)),
+	NamedColor("indigo",               Color::rgb( 75,   0, 130)),
+	NamedColor("maroon",               Color::rgb(128,   0,   0)),
+	NamedColor("orange",               Color::rgb(255, 165,   0)),
+	NamedColor("orchid",               Color::rgb(218, 112, 214)),
+	NamedColor("purple",               Color::rgb(128,   0, 128)),
+	NamedColor("salmon",               Color::rgb(250, 128, 114)),
+	NamedColor("sienna",               Color::rgb(160,  82,  45)),
+	NamedColor("silver",               Color::rgb(192, 192, 192)),
+	NamedColor("tomato",               Color::rgb(255,  99,  71)),
+	NamedColor("violet",               Color::rgb(238, 130, 238)),
+	NamedColor("yellow",               Color::rgb(255, 255,   0)),
+	NamedColor("crimson",              Color::rgb(220,  20,  60)),
+	NamedColor("darkred",              Color::rgb(139,   0,   0)),
+	NamedColor("dimgray",              Color::rgb(105, 105, 105)),
+	NamedColor("dimgrey",              Color::rgb(105, 105, 105)),
+	NamedColor("fuchsia",              Color::rgb(255,   0, 255)),
+	NamedColor("hotpink",              Color::rgb(255, 105, 180)),
+	NamedColor("magenta",              Color::rgb(255,   0, 255)),
+	NamedColor("oldlace",              Color::rgb(253, 245, 230)),
+	NamedColor("skyblue",              Color::rgb(135, 206, 235)),
+	NamedColor("thistle",              Color::rgb(216, 191, 216)),
+	NamedColor("cornsilk",             Color::rgb(255, 248, 220)),
+	NamedColor("darkblue",             Color::rgb(  0,   0, 139)),
+	NamedColor("darkcyan",             Color::rgb(  0, 139, 139)),
+	NamedColor("darkgray",             Color::rgb(169, 169, 169)),
+	NamedColor("darkgrey",             Color::rgb(169, 169, 169)),
+	NamedColor("deeppink",             Color::rgb(255,  20, 147)),
+	NamedColor("honeydew",             Color::rgb(240, 255, 240)),
+	NamedColor("lavender",             Color::rgb(230, 230, 250)),
+	NamedColor("moccasin",             Color::rgb(255, 228, 181)),
+	NamedColor("seagreen",             Color::rgb( 46, 139,  87)),
+	NamedColor("seashell",             Color::rgb(255, 245, 238)),
+	NamedColor("aliceblue",            Color::rgb(240, 248, 255)),
+	NamedColor("burlywood",            Color::rgb(222, 184, 135)),
+	NamedColor("cadetblue",            Color::rgb( 95, 158, 160)),
+	NamedColor("chocolate",            Color::rgb(210, 105,  30)),
+	NamedColor("darkgreen",            Color::rgb(  0, 100,   0)),
+	NamedColor("darkkhaki",            Color::rgb(189, 183, 107)),
+	NamedColor("firebrick",            Color::rgb(178,  34,  34)),
+	NamedColor("gainsboro",            Color::rgb(220, 220, 220)),
+	NamedColor("goldenrod",            Color::rgb(218, 165,  32)),
+	NamedColor("indianred",            Color::rgb(205,  92,  92)),
+	NamedColor("lawngreen",            Color::rgb(124, 252,   0)),
+	NamedColor("lightblue",            Color::rgb(173, 216, 230)),
+	NamedColor("lightcyan",            Color::rgb(224, 255, 255)),
+	NamedColor("lightgray",            Color::rgb(211, 211, 211)),
+	NamedColor("lightgrey",            Color::rgb(211, 211, 211)),
+	NamedColor("lightpink",            Color::rgb(255, 182, 193)),
+	NamedColor("limegreen",            Color::rgb( 50, 205,  50)),
+	NamedColor("mintcream",            Color::rgb(245, 255, 250)),
+	NamedColor("mistyrose",            Color::rgb(255, 228, 225)),
+	NamedColor("olivedrab",            Color::rgb(107, 142,  35)),
+	NamedColor("orangered",            Color::rgb(255,  69,   0)),
+	NamedColor("palegreen",            Color::rgb(152, 251, 152)),
+	NamedColor("peachpuff",            Color::rgb(255, 218, 185)),
+	NamedColor("rosybrown",            Color::rgb(188, 143, 143)),
+	NamedColor("royalblue",            Color::rgb( 65, 105, 225)),
+	NamedColor("slateblue",            Color::rgb(106,  90, 205)),
+	NamedColor("slategray",            Color::rgb(112, 128, 144)),
+	NamedColor("slategrey",            Color::rgb(112, 128, 144)),
+	NamedColor("steelblue",            Color::rgb( 70, 130, 180)),
+	NamedColor("turquoise",            Color::rgb( 64, 224, 208)),
+	NamedColor("aquamarine",           Color::rgb(127, 255, 212)),
+	NamedColor("blueviolet",           Color::rgb(138,  43, 226)),
+	NamedColor("chartreuse",           Color::rgb(127, 255,   0)),
+	NamedColor("darkorange",           Color::rgb(255, 140,   0)),
+	NamedColor("darkorchid",           Color::rgb(153,  50, 204)),
+	NamedColor("darksalmon",           Color::rgb(233, 150, 122)),
+	NamedColor("darkviolet",           Color::rgb(148,   0, 211)),
+	NamedColor("dodgerblue",           Color::rgb( 30, 144, 255)),
+	NamedColor("ghostwhite",           Color::rgb(248, 248, 255)),
+	NamedColor("lightcoral",           Color::rgb(240, 128, 128)),
+	NamedColor("lightgreen",           Color::rgb(144, 238, 144)),
+	NamedColor("mediumblue",           Color::rgb(  0,   0, 205)),
+	NamedColor("papayawhip",           Color::rgb(255, 239, 213)),
+	NamedColor("powderblue",           Color::rgb(176, 224, 230)),
+	NamedColor("sandybrown",           Color::rgb(244, 164,  96)),
+	NamedColor("whitesmoke",           Color::rgb(245, 245, 245)),
+	NamedColor("darkmagenta",          Color::rgb(139,   0, 139)),
+	NamedColor("deepskyblue",          Color::rgb(  0, 191, 255)),
+	NamedColor("floralwhite",          Color::rgb(255, 250, 240)),
+	NamedColor("forestgreen",          Color::rgb( 34, 139,  34)),
+	NamedColor("greenyellow",          Color::rgb(173, 255,  47)),
+	NamedColor("lightsalmon",          Color::rgb(255, 160, 122)),
+	NamedColor("lightyellow",          Color::rgb(255, 255, 224)),
+	NamedColor("navajowhite",          Color::rgb(255, 222, 173)),
+	NamedColor("saddlebrown",          Color::rgb(139,  69,  19)),
+	NamedColor("springgreen",          Color::rgb(  0, 255, 127)),
+	NamedColor("yellowgreen",          Color::rgb(154, 205,  50)),
+	NamedColor("antiquewhite",         Color::rgb(250, 235, 215)),
+	NamedColor("darkseagreen",         Color::rgb(143, 188, 143)),
+	NamedColor("lemonchiffon",         Color::rgb(255, 250, 205)),
+	NamedColor("lightskyblue",         Color::rgb(135, 206, 250)),
+	NamedColor("mediumorchid",         Color::rgb(186,  85, 211)),
+	NamedColor("mediumpurple",         Color::rgb(147, 112, 219)),
+	NamedColor("midnightblue",         Color::rgb( 25,  25, 112)),
+	NamedColor("darkgoldenrod",        Color::rgb(184, 134,  11)),
+	NamedColor("darkslateblue",        Color::rgb( 72,  61, 139)),
+	NamedColor("darkslategray",        Color::rgb( 47,  79,  79)),
+	NamedColor("darkslategrey",        Color::rgb( 47,  79,  79)),
+	NamedColor("darkturquoise",        Color::rgb(  0, 206, 209)),
+	NamedColor("lavenderblush",        Color::rgb(255, 240, 245)),
+	NamedColor("lightseagreen",        Color::rgb( 32, 178, 170)),
+	NamedColor("palegoldenrod",        Color::rgb(238, 232, 170)),
+	NamedColor("paleturquoise",        Color::rgb(175, 238, 238)),
+	NamedColor("palevioletred",        Color::rgb(219, 112, 147)),
+	NamedColor("blanchedalmond",       Color::rgb(255, 235, 205)),
+	NamedColor("cornflowerblue",       Color::rgb(100, 149, 237)),
+	NamedColor("darkolivegreen",       Color::rgb( 85, 107,  47)),
+	NamedColor("lightslategray",       Color::rgb(119, 136, 153)),
+	NamedColor("lightslategrey",       Color::rgb(119, 136, 153)),
+	NamedColor("lightsteelblue",       Color::rgb(176, 196, 222)),
+	NamedColor("mediumseagreen",       Color::rgb( 60, 179, 113)),
+	NamedColor("mediumslateblue",      Color::rgb(123, 104, 238)),
+	NamedColor("mediumturquoise",      Color::rgb( 72, 209, 204)),
+	NamedColor("mediumvioletred",      Color::rgb(199,  21, 133)),
+	NamedColor("mediumaquamarine",     Color::rgb(102, 205, 170)),
+	NamedColor("mediumspringgreen",    Color::rgb(  0, 250, 154)),
+	NamedColor("lightgoldenrodyellow", Color::rgb(250, 250, 210)),
+};
+
 class StyleParser: public Parser {
-	Style& style;
-	std::shared_ptr<Paint> parse_paint() {
+public:
+	StyleParser(const StringView& s): Parser(s) {}
+	Color parse_color() {
 		if (parse('#')) {
 			int d[6];
 			int i = 0;
@@ -404,13 +563,13 @@ class StyleParser: public Parser {
 				const float red = (d[0] << 4 | d[1]) / 255.f;
 				const float green = (d[2] << 4 | d[3]) / 255.f;
 				const float blue = (d[4] << 4 | d[5]) / 255.f;
-				return std::make_shared<ColorPaint>(Color(red, green, blue));
+				return Color(red, green, blue);
 			}
 			else if (i == 3) {
 				const float red = d[0] / 15.f;
-				const float green = d[0] / 15.f;
-				const float blue = d[0] / 15.f;
-				return std::make_shared<ColorPaint>(Color(red, green, blue));
+				const float green = d[1] / 15.f;
+				const float blue = d[2] / 15.f;
+				return Color(red, green, blue);
 			}
 			else {
 				error("expected 3 or 6 digits");
@@ -448,18 +607,36 @@ class StyleParser: public Parser {
 			}
 			parse_all(white_space);
 			expect(")");
-			return std::make_shared<ColorPaint>(Color(red, green, blue));
+			return Color(red, green, blue);
 		}
 		else {
-			error("invalid paint");
+			StringView start = get();
+			parse_all([](Character c) {
+				return c.between('a', 'z');
+			});
+			StringView name = get() - start;
+			auto i = std::lower_bound(std::begin(color_names), std::end(color_names), name);
+			if (i == std::end(color_names) || i->name != name) {
+				error("invalid color");
+			}
+			return i->color;
 		}
 	}
-public:
-	StyleParser(const StringView& s, Style& style): Parser(s), style(style) {}
-	void parse_fill() {
-		style.fill = parse_paint();
+	void parse_paint(std::shared_ptr<Paint>& paint) {
+		if (parse("none")) {
+			paint = nullptr;
+		}
+		else if (parse("inherit")) {
+
+		}
+		else {
+			paint = std::make_shared<ColorPaint>(parse_color());
+		}
 	}
-	void parse_fill_opacity() {
+	void parse_fill(Style& style) {
+		parse_paint(style.fill);
+	}
+	void parse_fill_opacity(Style& style) {
 		style.fill_opacity = parse_number(*this);
 	}
 };
@@ -588,12 +765,12 @@ class SVGParser: public XMLParser {
 					p.parse();
 				}
 				else if (name == "fill") {
-					StyleParser p(value, style);
-					p.parse_fill();
+					StyleParser p(value);
+					p.parse_fill(style);
 				}
 				else if (name == "fill-opacity") {
-					StyleParser p(value, style);
-					p.parse_fill_opacity();
+					StyleParser p(value);
+					p.parse_fill_opacity(style);
 				}
 			});
 			document.draw(transformation * path, style);
@@ -603,7 +780,7 @@ class SVGParser: public XMLParser {
 				else parse_char_data();
 			}
 		}
-		if (name == "g") {
+		else if (name == "g") {
 			Transformation previous_transformation = transformation;
 			parse_attributes([&](const StringView& name, const StringView& value) {
 				if (name == "transform") {

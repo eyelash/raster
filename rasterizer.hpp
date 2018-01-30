@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2017, Elias Aebi
+Copyright (c) 2017-2018, Elias Aebi
 All rights reserved.
 
 */
@@ -52,6 +52,9 @@ struct Color {
 	float r, g, b, a;
 	constexpr Color(float r, float g, float b, float a = 1.f): r(r), g(g), b(b), a(a) {}
 	constexpr Color(): Color(0.f, 0.f, 0.f, 0.f) {}
+	static constexpr Color rgb(unsigned char r, unsigned char g, unsigned char b) {
+		return Color(r / 255.f, g / 255.f, b / 255.f);
+	}
 	constexpr Color operator +(const Color& c) const {
 		return Color(r + c.r, g + c.g, b + c.b, a + c.a);
 	}
