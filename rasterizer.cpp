@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2017, Elias Aebi
+Copyright (c) 2017-2018, Elias Aebi
 All rights reserved.
 
 */
@@ -14,6 +14,10 @@ All rights reserved.
 #include <png.h>
 
 namespace {
+
+template <class T> constexpr const T& clamp(const T& value, const T& min, const T& max) {
+	return value < min ? min : (max < value ? max : value);
+}
 
 struct ShapeCompare {
 	bool operator ()(const Shape* s0, const Shape* s1) {
@@ -58,6 +62,25 @@ struct Strip {
 	Strip(float y0, float y1): y0(y0), y1(y1) {}
 };
 
+class Random {
+	uint64_t s[2] = {0xC0DEC0DEC0DEC0DE, 0xC0DEC0DEC0DEC0DE};
+public:
+	uint64_t next() {
+		// xorshift128+
+		const uint64_t result = s[0] + s[1];
+		const uint64_t s1 = s[0] ^ (s[0] << 23);
+		s[0] = s[1];
+		s[1] = s1 ^ s[1] ^ (s1 >> 18) ^ (s[1] >> 5);
+		return result;
+	}
+	float next_float() {
+		return std::ldexp(static_cast<float>(next()), -64);
+	}
+	unsigned char dither(float value) {
+		return clamp(value * 255.f + next_float(), 0.f, 255.f);
+	}
+};
+
 class Pixmap {
 	std::vector<Color> pixels;
 	size_t width;
@@ -73,10 +96,6 @@ public:
 		size_t i = y * width + x;
 		return pixels[i];
 	}
-	void set_pixel(size_t x, size_t y, const Color& color) {
-		size_t i = y * width + x;
-		pixels[i] = color;
-	}
 	void add_pixel(size_t x, size_t y, const Color& color) {
 		size_t i = y * width + x;
 		pixels[i] = pixels[i] + color;
@@ -89,14 +108,15 @@ public:
 		png_infop info = png_create_info_struct(png);
 		png_set_IHDR(png, info, width, height, 8, PNG_COLOR_TYPE_RGB_ALPHA, PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
 		png_write_info(png, info);
+		Random random;
+		std::vector<unsigned char> row(width * 4);
 		for (size_t y = 0; y < height; ++y) {
-			std::vector<unsigned char> row(width * 4);
 			for (size_t x = 0; x < width; ++x) {
 				Color color = get_pixel(x, y).unpremultiply();
-				row[x * 4 + 0] = color.r * 255.f + .5f;
-				row[x * 4 + 1] = color.g * 255.f + .5f;
-				row[x * 4 + 2] = color.b * 255.f + .5f;
-				row[x * 4 + 3] = color.a * 255.f + .5f;
+				row[x * 4 + 0] = random.dither(color.r);
+				row[x * 4 + 1] = random.dither(color.g);
+				row[x * 4 + 2] = random.dither(color.b);
+				row[x * 4 + 3] = random.dither(color.a);
 			}
 			png_write_row(png, row.data());
 		}
@@ -195,8 +215,8 @@ void rasterize_row(const Strip& strip, Pixmap& pixmap, size_t y) {
 			const float x0 = std::max(trapezoid.x0, 0.f);
 			const float x1 = std::min(trapezoid.x3, pixmap.get_width() - .5f);
 			for (size_t x = x0; x < x1; ++x) {
-				float factor = rasterize_pixel(trapezoid, x);
-				Color color = shapes.get_color(Point(static_cast<float>(x) + .5f, static_cast<float>(y) + .5f));
+				const float factor = rasterize_pixel(trapezoid, x);
+				const Color color = shapes.get_color(Point(static_cast<float>(x) + .5f, static_cast<float>(y) + .5f));
 				pixmap.add_pixel(x, y, color * factor);
 			}
 		}
@@ -204,8 +224,8 @@ void rasterize_row(const Strip& strip, Pixmap& pixmap, size_t y) {
 }
 
 void rasterize_strip(const Strip& strip, Pixmap& pixmap) {
-	float y0 = std::max(strip.y0, 0.f);
-	float y1 = std::min(strip.y1, pixmap.get_height() - .5f);
+	const float y0 = std::max(strip.y0, 0.f);
+	const float y1 = std::min(strip.y1, pixmap.get_height() - .5f);
 	for (size_t y = y0; y < y1; ++y) {
 		rasterize_row(strip, pixmap, y);
 	}
@@ -246,8 +266,8 @@ void rasterize(const std::vector<Shape>& shapes, const char* file_name, size_t w
 
 	Pixmap pixmap(width, height);
 	for (size_t i = 1; i < ys.size(); ++i) {
-		float y0 = ys[i-1];
-		float y1 = ys[i];
+		const float y0 = ys[i-1];
+		const float y1 = ys[i];
 		if (y0 != y1) {
 			Strip strip(y0, y1);
 			for (const RasterizeSegment& segment: segments) {
