@@ -818,10 +818,11 @@ public:
 		StringView name = parse_start_tag();
 		if (name != "svg") error("expected svg tag");
 		struct {
-			float x, y;
-			float width, height;
+			float x = 0.f;
+			float y = 0.f;
+			float width = 0.f;
+			float height = 0.f;
 		} view_box;
-		bool has_view_box = false;
 		parse_attributes([&](const StringView& name, const StringView& value) {
 			if (name == "viewBox") {
 				Parser p(value);
@@ -833,7 +834,6 @@ public:
 				view_box.width = parse_number(p);
 				p.parse_all(white_space_or_comma);
 				view_box.height = parse_number(p);
-				has_view_box = true;
 			}
 			else if (name == "width") {
 				Parser p(value);
@@ -844,7 +844,9 @@ public:
 				document.height = parse_number(p);
 			}
 		});
-		if (has_view_box) {
+		if (document.width == 0.f) document.width = view_box.width;
+		if (document.height == 0.f) document.height = view_box.height;
+		if (view_box.width > 0.f && view_box.height > 0.f) {
 			transformation = Transformation::scale(document.width/view_box.width, document.height/view_box.height) * Transformation::translate(-view_box.x, -view_box.y);
 		}
 		while (!next_is_end_tag()) {

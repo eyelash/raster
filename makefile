@@ -1,4 +1,4 @@
-CXXFLAGS = -std=c++11 -Wall -O2
+CXXFLAGS += -std=c++11 -Wall -O2
 LDLIBS = -lpng
 
 raster: main.cpp parser.cpp rasterizer.cpp

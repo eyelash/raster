@@ -148,7 +148,8 @@ struct Style {
 
 struct Document {
 	std::vector<Shape> shapes;
-	float width, height;
+	float width = 0.f;
+	float height = 0.f;
 	void append_segment(const Point& p0, const Point& p1) {
 		if (p0.y != p1.y) {
 			shapes.back().segments.push_back(Segment(p0, p1));
