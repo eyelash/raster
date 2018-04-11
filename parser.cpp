@@ -633,11 +633,22 @@ public:
 			paint = std::make_shared<ColorPaint>(parse_color());
 		}
 	}
-	void parse_fill(Style& style) {
-		parse_paint(style.fill);
-	}
-	void parse_fill_opacity(Style& style) {
-		style.fill_opacity = parse_number(*this);
+	void parse_attribute(const StringView& name, Style& style) {
+		if (name == "fill") {
+			parse_paint(style.fill);
+		}
+		else if (name == "fill-opacity") {
+			style.fill_opacity = parse_number(*this);
+		}
+		else if (name == "stroke") {
+			parse_paint(style.stroke);
+		}
+		else if (name == "stroke-width") {
+			style.stroke_width = parse_number(*this);
+		}
+		else if (name == "stroke-opacity") {
+			style.stroke_opacity = parse_number(*this);
+		}
 	}
 };
 
@@ -764,16 +775,12 @@ class SVGParser: public XMLParser {
 					PathParser p(value, path);
 					p.parse();
 				}
-				else if (name == "fill") {
+				else {
 					StyleParser p(value);
-					p.parse_fill(style);
-				}
-				else if (name == "fill-opacity") {
-					StyleParser p(value);
-					p.parse_fill_opacity(style);
+					p.parse_attribute(name, style);
 				}
 			});
-			document.draw(transformation * path, style);
+			document.draw(path, style, transformation);
 			while (!next_is_end_tag()) {
 				if (next_is_comment()) parse_comment();
 				else if (next_is_start_tag()) skip_tag();
@@ -788,9 +795,9 @@ class SVGParser: public XMLParser {
 					TransformParser p(value);
 					transformation = transformation * p.parse();
 				}
-				else if (name == "fill") {
+				else {
 					StyleParser p(value);
-					p.parse_fill(style);
+					p.parse_attribute(name, style);
 				}
 			});
 			while (!next_is_end_tag()) {

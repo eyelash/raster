@@ -8,6 +8,46 @@ All rights reserved.
 #include "rasterizer.hpp"
 #include <cmath>
 
+struct Transformation {
+	// +-     -+
+	// | a c e |
+	// | b d f |
+	// | 0 0 1 |
+	// +-     -+
+	float a, b, c, d, e, f;
+	constexpr Transformation(float a, float b, float c, float d, float e, float f): a(a), b(b), c(c), d(d), e(e), f(f) {}
+	constexpr Transformation(): Transformation(1.f, 0.f, 0.f, 1.f, 0.f, 0.f) {}
+	static constexpr Transformation scale(float x, float y) {
+		return Transformation(x, 0.f, 0.f, y, 0.f, 0.f);
+	}
+	static constexpr Transformation translate(float x, float y) {
+		return Transformation(1.f, 0.f, 0.f, 1.f, x, y);
+	}
+	static Transformation rotate(float a) {
+		const float c = std::cos(a);
+		const float s = std::sin(a);
+		return Transformation(c, s, -s, c, 0.f, 0.f);
+	}
+};
+
+constexpr Point operator *(const Transformation& t, const Point& p) {
+	return Point(
+		t.a * p.x + t.c * p.y + t.e,
+		t.b * p.x + t.d * p.y + t.f
+	);
+}
+
+constexpr Transformation operator *(const Transformation& t0, const Transformation& t1) {
+	return Transformation(
+		t0.a * t1.a + t0.c * t1.b,
+		t0.b * t1.a + t0.d * t1.b,
+		t0.a * t1.c + t0.c * t1.d,
+		t0.b * t1.c + t0.d * t1.d,
+		t0.a * t1.e + t0.c * t1.f + t0.e,
+		t0.b * t1.e + t0.d * t1.f + t0.f
+	);
+}
+
 struct CubicBezierCurve {
 	Point p0, p1, p2, p3;
 	constexpr CubicBezierCurve(const Point& p0, const Point& p1, const Point& p2, const Point& p3): p0(p0), p1(p1), p2(p2), p3(p3) {}
@@ -30,6 +70,9 @@ struct Subpath {
 	}
 	void push_offset_segment(const Point& p0, const Point& p1, float offset) {
 		Point d = p1 - p0;
+		if (length(d) == 0.f) {
+			return;
+		}
 		d = d * (offset / length(d));
 		d = Point(-d.y, d.x);
 		points.push_back(p0 + d);
@@ -113,6 +156,15 @@ struct Path {
 	}
 };
 
+inline Path operator *(const Transformation& t, Path path) {
+	for (Subpath& subpath: path.subpaths) {
+		for (Point& p: subpath.points) {
+			p = t * p;
+		}
+	}
+	return path;
+}
+
 struct ColorPaint: Paint {
 	Color color;
 	ColorPaint(const Color& color): color(color) {}
@@ -169,8 +221,10 @@ struct OpacityPaint: Paint {
 
 struct Style {
 	std::shared_ptr<Paint> fill;
-	float fill_opacity;
-	Style(): fill_opacity(1.f) {}
+	float fill_opacity = 1.f;
+	std::shared_ptr<Paint> stroke;
+	float stroke_width = 1.f;
+	float stroke_opacity = 1.f;
 };
 
 struct Document {
@@ -196,58 +250,12 @@ struct Document {
 	void stroke(const Path& path, const std::shared_ptr<Paint>& paint, float width) {
 		fill(path.stroke(width), paint);
 	}
-	void draw(const Path& path, const Style& style) {
-		if (style.fill) {
-			fill(path, std::make_shared<OpacityPaint>(style.fill, style.fill_opacity));
+	void draw(const Path& path, const Style& style, const Transformation& transformation = Transformation()) {
+		if (style.fill && style.fill_opacity > 0.f) {
+			fill(transformation * path, std::make_shared<OpacityPaint>(style.fill, style.fill_opacity));
+		}
+		if (style.stroke && style.stroke_width > 0.f && style.stroke_opacity > 0.f) {
+			fill(transformation * path.stroke(style.stroke_width), std::make_shared<OpacityPaint>(style.stroke, style.stroke_opacity));
 		}
 	}
 };
-
-struct Transformation {
-	// +-     -+
-	// | a c e |
-	// | b d f |
-	// | 0 0 1 |
-	// +-     -+
-	float a, b, c, d, e, f;
-	constexpr Transformation(float a, float b, float c, float d, float e, float f): a(a), b(b), c(c), d(d), e(e), f(f) {}
-	constexpr Transformation(): Transformation(1.f, 0.f, 0.f, 1.f, 0.f, 0.f) {}
-	static constexpr Transformation scale(float x, float y) {
-		return Transformation(x, 0.f, 0.f, y, 0.f, 0.f);
-	}
-	static constexpr Transformation translate(float x, float y) {
-		return Transformation(1.f, 0.f, 0.f, 1.f, x, y);
-	}
-	static Transformation rotate(float a) {
-		const float c = std::cos(a);
-		const float s = std::sin(a);
-		return Transformation(c, s, -s, c, 0.f, 0.f);
-	}
-};
-
-constexpr Point operator *(const Transformation& t, const Point& p) {
-	return Point(
-		t.a * p.x + t.c * p.y + t.e,
-		t.b * p.x + t.d * p.y + t.f
-	);
-}
-
-constexpr Transformation operator *(const Transformation& t0, const Transformation& t1) {
-	return Transformation(
-		t0.a * t1.a + t0.c * t1.b,
-		t0.b * t1.a + t0.d * t1.b,
-		t0.a * t1.c + t0.c * t1.d,
-		t0.b * t1.c + t0.d * t1.d,
-		t0.a * t1.e + t0.c * t1.f + t0.e,
-		t0.b * t1.e + t0.d * t1.f + t0.f
-	);
-}
-
-inline Path operator *(const Transformation& t, Path path) {
-	for (Subpath& subpath: path.subpaths) {
-		for (Point& p: subpath.points) {
-			p = t * p;
-		}
-	}
-	return path;
-}
