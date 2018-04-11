@@ -744,6 +744,7 @@ public:
 class SVGParser: public XMLParser {
 	Document& document;
 	Transformation transformation;
+	Style style;
 	void skip_tag() {
 		StringView name = parse_start_tag();
 		parse_attributes([](const StringView& name, const StringView& value) {});
@@ -758,7 +759,6 @@ class SVGParser: public XMLParser {
 		StringView name = parse_start_tag();
 		if (name == "path") {
 			Path path;
-			Style style;
 			parse_attributes([&](const StringView& name, const StringView& value) {
 				if (name == "d") {
 					PathParser p(value, path);
@@ -782,10 +782,15 @@ class SVGParser: public XMLParser {
 		}
 		else if (name == "g") {
 			Transformation previous_transformation = transformation;
+			Style previous_style = style;
 			parse_attributes([&](const StringView& name, const StringView& value) {
 				if (name == "transform") {
 					TransformParser p(value);
 					transformation = transformation * p.parse();
+				}
+				else if (name == "fill") {
+					StyleParser p(value);
+					p.parse_fill(style);
 				}
 			});
 			while (!next_is_end_tag()) {
@@ -794,6 +799,7 @@ class SVGParser: public XMLParser {
 				else parse_char_data();
 			}
 			transformation = previous_transformation;
+			style = previous_style;
 		}
 		else {
 			parse_attributes([](const StringView& name, const StringView& value) {});
