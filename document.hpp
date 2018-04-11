@@ -24,8 +24,17 @@ struct CubicBezierCurve {
 
 struct Subpath {
 	std::vector<Point> points;
-	bool closed;
-	Subpath(): points(), closed(false) {}
+	bool closed = false;
+	static float length(const Point& p) {
+		return std::sqrt(dot(p, p));
+	}
+	void push_offset_segment(const Point& p0, const Point& p1, float offset) {
+		Point d = p1 - p0;
+		d = d * (offset / length(d));
+		d = Point(-d.y, d.x);
+		points.push_back(p0 + d);
+		points.push_back(p1 + d);
+	}
 };
 
 struct Path {
@@ -49,9 +58,6 @@ struct Path {
 	void move_to(float x, float y) {
 		move_to(Point(x, y));
 	}
-	void move_to_relative(const Point& p) {
-		move_to(current_point() + p);
-	}
 	void line_to(const Point& p) {
 		if (subpaths.empty() || subpaths.back().closed) {
 			move_to(current_point());
@@ -60,9 +66,6 @@ struct Path {
 	}
 	void line_to(float x, float y) {
 		line_to(Point(x, y));
-	}
-	void line_to_relative(const Point& p) {
-		line_to(current_point() + p);
 	}
 	void curve_to(const Point& p1, const Point& p2, const Point& p3) {
 		const Point& p0 = current_point();
@@ -83,6 +86,30 @@ struct Path {
 	}
 	void close() {
 		subpaths.back().closed = true;
+	}
+	Path stroke(float width) const {
+		const float offset = width / 2.f;
+		Path path;
+		for (const Subpath& subpath: subpaths) {
+			const std::vector<Point>& points = subpath.points;
+			Subpath new_subpath;
+			for (size_t i = 1; i < points.size(); ++i) {
+				new_subpath.push_offset_segment(points[i-1], points[i], offset);
+			}
+			if (subpath.closed) {
+				new_subpath.push_offset_segment(points.back(), points.front(), offset);
+				new_subpath.closed = true;
+				path.subpaths.push_back(new_subpath);
+				new_subpath = Subpath();
+				new_subpath.push_offset_segment(points.front(), points.back(), offset);
+			}
+			for (size_t i = points.size() - 1; i > 0; --i) {
+				new_subpath.push_offset_segment(points[i], points[i-1], offset);
+			}
+			new_subpath.closed = true;
+			path.subpaths.push_back(new_subpath);
+		}
+		return path;
 	}
 };
 
@@ -165,6 +192,9 @@ struct Document {
 			}
 			append_segment(points.back(), points.front());
 		}
+	}
+	void stroke(const Path& path, const std::shared_ptr<Paint>& paint, float width) {
+		fill(path.stroke(width), paint);
 	}
 	void draw(const Path& path, const Style& style) {
 		if (style.fill) {

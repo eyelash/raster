@@ -10,6 +10,7 @@ All rights reserved.
 #include <map>
 #include <algorithm>
 #include <utility>
+#include <cmath>
 #include <cstdio>
 #include <png.h>
 
