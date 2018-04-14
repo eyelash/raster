@@ -8,6 +8,7 @@ All rights reserved.
 #include "rasterizer.hpp"
 #include <vector>
 #include <map>
+#include <queue>
 #include <algorithm>
 #include <utility>
 #include <cmath>
@@ -232,56 +233,86 @@ void rasterize_strip(const Strip& strip, Pixmap& pixmap) {
 	}
 }
 
+struct Event {
+	enum class Type {
+		LINE_START,
+		LINE_END
+	};
+	Type type;
+	float y;
+	size_t index;
+	constexpr Event(Type type, float y, size_t index): type(type), y(y), index(index) {}
+	constexpr bool operator >(const Event& event) const {
+		return y > event.y;
+	}
+};
+
 }
 
 void rasterize(const std::vector<Shape>& shapes, const char* file_name, size_t width, size_t height) {
-	std::vector<RasterizeSegment> segments;
-	std::vector<float> ys;
-
-	// collect the segments and ys for each shape
+	// collect lines and events
+	std::vector<RasterizeLine> lines;
+	std::priority_queue<Event, std::vector<Event>, std::greater<Event>> events;
 	for (const Shape& shape: shapes) {
-		for (const Segment& segment: shape.segments) {
-			segments.push_back(RasterizeSegment(segment, &shape));
-			ys.push_back(segment.y0);
-			ys.push_back(segment.y1);
-		}
-	}
-
-	// add additional ys for intersecting segments
-	for (size_t i = 0; i < segments.size(); ++i) {
-		for (size_t j = i + 1; j < segments.size(); ++j) {
-			const Segment& s0 = segments[i];
-			const Segment& s1 = segments[j];
-			float y0 = std::max(s0.y0, s1.y0);
-			float y1 = std::min(s0.y1, s1.y1);
-			if (y0 < y1 && s0.line.m != s1.line.m) {
-				float y = intersect(s0.line, s1.line);
-				if (y0 < y && y < y1) {
-					ys.push_back(y);
-				}
+		for (const Segment& s: shape.segments) {
+			size_t index = lines.size();
+			if (s.y0 < s.y1) {
+				lines.push_back(RasterizeLine(s.line, 1, &shape));
+				events.push(Event(Event::Type::LINE_START, s.y0, index));
+				events.push(Event(Event::Type::LINE_END, s.y1, index));
+			}
+			else {
+				lines.push_back(RasterizeLine(s.line, -1, &shape));
+				events.push(Event(Event::Type::LINE_START, s.y1, index));
+				events.push(Event(Event::Type::LINE_END, s.y0, index));
 			}
 		}
 	}
-
-	std::sort(ys.begin(), ys.end());
 
 	Pixmap pixmap(width, height);
-	for (size_t i = 1; i < ys.size(); ++i) {
-		const float y0 = ys[i-1];
-		const float y1 = ys[i];
-		if (y0 != y1) {
-			Strip strip(y0, y1);
-			for (const RasterizeSegment& segment: segments) {
-				if (y0 < segment.y1 && segment.y0 < y1) {
-					strip.lines.push_back(segment.get_line());
+
+	float y = events.top().y;
+	std::vector<const RasterizeLine*> current_lines;
+	while (!events.empty()) {
+		Event event = events.top();
+		events.pop();
+		while (y < event.y) {
+			std::sort(current_lines.begin(), current_lines.end(), [y](const RasterizeLine* l0, const RasterizeLine* l1) {
+				const float x0 = l0->get_x(y);
+				const float x1 = l1->get_x(y);
+				if (x0 == x1) {
+					return l0->m < l1->m;
+				}
+				return x0 < x1;
+			});
+			float next_y = event.y;
+			// find intersections
+			for (size_t i = 1; i < current_lines.size(); ++i) {
+				const RasterizeLine& l0 = *current_lines[i-1];
+				const RasterizeLine& l1 = *current_lines[i];
+				if (l0.m != l1.m) {
+					const float intersection = intersect(l0, l1);
+					if (y < intersection && intersection < next_y) {
+						next_y = intersection;
+					}
 				}
 			}
-			const float cy = y0 + (y1 - y0) * .5f;
-			std::sort(strip.lines.begin(), strip.lines.end(), [cy](const Line& l0, const Line& l1) {
-				return l0.get_x(cy) < l1.get_x(cy);
-			});
+			Strip strip(y, next_y);
+			for (const RasterizeLine* line: current_lines) {
+				strip.lines.push_back(*line);
+			}
 			rasterize_strip(strip, pixmap);
+			y = next_y;
+		}
+		switch (event.type) {
+		case Event::Type::LINE_START:
+			current_lines.push_back(&lines[event.index]);
+			break;
+		case Event::Type::LINE_END:
+			current_lines.erase(std::find(current_lines.begin(), current_lines.end(), &lines[event.index]));
+			break;
 		}
 	}
+
 	pixmap.write(file_name);
 }
