@@ -28,6 +28,17 @@ struct Transformation {
 		const float s = std::sin(a);
 		return Transformation(c, s, -s, c, 0.f, 0.f);
 	}
+	Transformation invert() const {
+		const float det = a * d - b * c;
+		return Transformation(
+			d / det,
+			-b / det,
+			-c / det,
+			a / det,
+			(c * f - d * e) / det,
+			(b * e - a * f) / det
+		);
+	}
 };
 
 constexpr Point operator *(const Transformation& t, const Point& p) {
