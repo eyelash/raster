@@ -7,6 +7,7 @@ All rights reserved.
 
 #include "rasterizer.hpp"
 #include <cmath>
+#include <algorithm>
 
 struct Transformation {
 	// +-     -+
@@ -188,36 +189,46 @@ struct Gradient {
 	struct Stop {
 		Color color;
 		float pos;
+		constexpr bool operator <(float pos) const {
+			return this->pos < pos;
+		}
 	};
 	std::vector<Stop> stops;
+	Gradient() {}
 	Gradient(std::initializer_list<Stop> stops): stops(stops) {}
-	Color evaluate(float pos) {
-		if (pos <= stops.front().pos) {
+	Color evaluate(float pos) const {
+		// the stops need to be sorted
+		if (stops.empty()) {
+			return Color();
+		}
+		const auto i = std::lower_bound(stops.begin(), stops.end(), pos);
+		if (i == stops.begin()) {
 			return stops.front().color;
 		}
-		if (pos >= stops.back().pos) {
+		if (i == stops.end()) {
 			return stops.back().color;
 		}
-		for (size_t i = 1; i < stops.size(); ++i) {
-			if (pos <= stops[i].pos) {
-				float factor = (pos - stops[i-1].pos) / (stops[i].pos - stops[i-1].pos);
-				return stops[i-1].color * (1.f - factor) + stops[i].color * factor;
-			}
-		}
-		return Color();
+		const auto i0 = i - 1;
+		const float factor = (pos - i0->pos) / (i->pos - i0->pos);
+		return i0->color * (1.f - factor) + i->color * factor;
+	}
+};
+
+struct LinearGradient: Gradient {
+	Point start;
+	Point end;
+	LinearGradient(const Point& start, const Point& end, std::initializer_list<Stop> stops): Gradient(stops), start(start), end(end) {}
+	Color evaluate(const Point& p) const {
+		const Point d = end - start;
+		return Gradient::evaluate(dot(p - start, d) / dot(d, d));
 	}
 };
 
 struct LinearGradientPaint: Paint {
-	Gradient gradient;
-	Point start;
-	Point matrix;
-	static constexpr Point get_matrix(const Point& start, const Point& d) {
-		return d * (1.f / dot(d, d));
-	}
-	LinearGradientPaint(const Point& start, const Point& end, std::initializer_list<Gradient::Stop> stops): gradient(stops), start(start), matrix(get_matrix(start, end - start)) {}
+	LinearGradient gradient;
+	LinearGradientPaint(const LinearGradient& gradient): gradient(gradient) {}
 	Color evaluate(const Point& point) override {
-		return gradient.evaluate(dot(matrix, point - start));
+		return gradient.evaluate(point);
 	}
 };
 
