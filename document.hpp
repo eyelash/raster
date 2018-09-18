@@ -217,6 +217,7 @@ struct Gradient {
 struct LinearGradient: Gradient {
 	Point start;
 	Point end;
+	LinearGradient(): start(0.f, 0.f), end(1.f, 0.f) {}
 	LinearGradient(const Point& start, const Point& end, std::initializer_list<Stop> stops): Gradient(stops), start(start), end(end) {}
 	Color evaluate(const Point& p) const {
 		const Point d = end - start;
@@ -241,12 +242,47 @@ struct OpacityPaint: Paint {
 	}
 };
 
+struct TransformationPaint: Paint {
+	std::shared_ptr<Paint> paint;
+	Transformation transformation;
+	TransformationPaint(const std::shared_ptr<Paint>& paint, const Transformation& transformation): paint(paint), transformation(transformation) {}
+	Color evaluate(const Point& point) override {
+		return paint->evaluate(transformation * point);
+	}
+};
+
+struct PaintServer {
+	virtual std::shared_ptr<Paint> get_paint(const Transformation& transformation) = 0;
+};
+
+struct ColorPaintServer: PaintServer {
+	Color color;
+	ColorPaintServer(const Color& color): color(color) {}
+	std::shared_ptr<Paint> get_paint(const Transformation& transformation) override {
+		return std::make_shared<ColorPaint>(color);
+	}
+};
+
+struct LinearGradientPaintServer: PaintServer {
+	LinearGradient gradient;
+	LinearGradientPaintServer(const LinearGradient& gradient): gradient(gradient) {}
+	std::shared_ptr<Paint> get_paint(const Transformation& transformation) override {
+		return std::make_shared<TransformationPaint>(std::make_shared<LinearGradientPaint>(gradient), transformation.invert());
+	}
+};
+
 struct Style {
-	std::shared_ptr<Paint> fill;
+	std::shared_ptr<PaintServer> fill;
 	float fill_opacity = 1.f;
-	std::shared_ptr<Paint> stroke;
+	std::shared_ptr<PaintServer> stroke;
 	float stroke_width = 1.f;
 	float stroke_opacity = 1.f;
+	std::shared_ptr<Paint> get_fill_paint(const Transformation& transformation = Transformation()) const {
+		return std::make_shared<OpacityPaint>(fill->get_paint(transformation), fill_opacity);
+	}
+	std::shared_ptr<Paint> get_stroke_paint(const Transformation& transformation = Transformation()) const {
+		return std::make_shared<OpacityPaint>(stroke->get_paint(transformation), stroke_opacity);
+	}
 };
 
 struct Document {
@@ -274,10 +310,10 @@ struct Document {
 	}
 	void draw(const Path& path, const Style& style, const Transformation& transformation = Transformation()) {
 		if (style.fill && style.fill_opacity > 0.f) {
-			fill(transformation * path, std::make_shared<OpacityPaint>(style.fill, style.fill_opacity));
+			fill(transformation * path, style.get_fill_paint(transformation));
 		}
 		if (style.stroke && style.stroke_width > 0.f && style.stroke_opacity > 0.f) {
-			fill(transformation * path.stroke(style.stroke_width), std::make_shared<OpacityPaint>(style.stroke, style.stroke_opacity));
+			fill(transformation * path.stroke(style.stroke_width), style.get_stroke_paint(transformation));
 		}
 	}
 };

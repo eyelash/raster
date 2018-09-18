@@ -6,6 +6,8 @@ All rights reserved.
 */
 
 #include "parser.hpp"
+#include <map>
+#include <memory>
 
 class Parser {
 	StringView s;
@@ -542,6 +544,8 @@ constexpr NamedColor color_names[] = {
 	NamedColor("lightgoldenrodyellow", Color::rgb(250, 250, 210)),
 };
 
+using PaintServerMap = std::map<StringView, std::shared_ptr<PaintServer>>;
+
 class StyleParser: public Parser {
 public:
 	StyleParser(const StringView& s): Parser(s) {}
@@ -622,26 +626,44 @@ public:
 			return i->color;
 		}
 	}
-	void parse_paint(std::shared_ptr<Paint>& paint) {
+	void parse_paint(std::shared_ptr<PaintServer>& paint, const PaintServerMap& paint_servers) {
 		if (parse("none")) {
 			paint = nullptr;
 		}
 		else if (parse("inherit")) {
 
 		}
+		else if (parse("url")) {
+			expect("(");
+			expect("#");
+			StringView start = get();
+			parse_all([](Character c) {
+				return c != ')';
+			});
+			StringView id = get() - start;
+			expect(")");
+			auto i = paint_servers.find(id);
+			if (i == paint_servers.end()) {
+				//error("invalid IRI: " + id.to_string());
+				printf("url not found: %s\n", id.to_string().c_str());
+			}
+			else {
+				paint = i->second;
+			}
+		}
 		else {
-			paint = std::make_shared<ColorPaint>(parse_color());
+			paint = std::make_shared<ColorPaintServer>(parse_color());
 		}
 	}
-	bool parse_attribute(const StringView& name, Style& style) {
+	bool parse_attribute(const StringView& name, Style& style, const PaintServerMap& paint_servers) {
 		if (name == "fill") {
-			parse_paint(style.fill);
+			parse_paint(style.fill, paint_servers);
 		}
 		else if (name == "fill-opacity") {
 			style.fill_opacity = parse_number(*this);
 		}
 		else if (name == "stroke") {
-			parse_paint(style.stroke);
+			parse_paint(style.stroke, paint_servers);
 		}
 		else if (name == "stroke-width") {
 			style.stroke_width = parse_number(*this);
@@ -654,7 +676,7 @@ public:
 		}
 		return true;
 	}
-	void parse_style(Style& style) {
+	void parse_style(Style& style, const PaintServerMap& paint_servers) {
 		parse_all(white_space);
 		while (has_next()) {
 			StringView start = get();
@@ -665,7 +687,7 @@ public:
 			parse_all(white_space);
 			parse(':');
 			parse_all(white_space);
-			if (!parse_attribute(key, style)) {
+			if (!parse_attribute(key, style, paint_servers)) {
 				parse_all([](Character c) {
 					return c != ';';
 				});
@@ -780,6 +802,7 @@ class SVGParser: public XMLParser {
 	Document& document;
 	Transformation transformation;
 	Style style;
+	PaintServerMap paint_servers;
 	void skip_tag() {
 		StringView name = parse_start_tag();
 		parse_attributes([](const StringView& name, const StringView& value) {});
@@ -787,6 +810,98 @@ class SVGParser: public XMLParser {
 			if (next_is_comment()) parse_comment();
 			else if (next_is_start_tag()) skip_tag();
 			else parse_char_data();
+		}
+		parse_end_tag(name);
+	}
+	void parse_def() {
+		StringView name = parse_start_tag();
+		if (name == "linearGradient") {
+			LinearGradient gradient;
+			StringView id;
+			Transformation transformation;
+			parse_attributes([&](const StringView& name, const StringView& value) {
+				if (name == "id") {
+					id = value;
+				}
+				else if (name == "x1") {
+					Parser p(value);
+					gradient.start.x = parse_number(p);
+				}
+				else if (name == "y1") {
+					Parser p(value);
+					gradient.start.y = parse_number(p);
+				}
+				else if (name == "x2") {
+					Parser p(value);
+					gradient.end.x = parse_number(p);
+				}
+				else if (name == "y2") {
+					Parser p(value);
+					gradient.end.y = parse_number(p);
+				}
+				else if (name == "gradientUnits" && value == "userSpaceOnUse") {
+					// TODO: implement
+				}
+				else if (name == "gradientTransform") {
+					TransformParser p(value);
+					transformation = p.parse();
+				}
+			});
+			gradient.start = transformation * gradient.start;
+			gradient.end = transformation * gradient.end;
+			while (!next_is_end_tag()) {
+				if (next_is_comment()) parse_comment();
+				else if (next_is_start_tag()) {
+					StringView name = parse_start_tag();
+					if (name == "stop") {
+						Gradient::Stop stop;
+						float opacity = 1.f;
+						parse_attributes([&](const StringView& name, const StringView& value) {
+							if (name == "offset") {
+								Parser p(value);
+								stop.pos = parse_number(p);
+								if (p.parse('%')) {
+									stop.pos /= 100.f;
+								}
+							}
+							else if (name == "stop-color") {
+								StyleParser p(value);
+								stop.color = p.parse_color();
+							}
+							else if (name == "stop-opacity") {
+								Parser p(value);
+								opacity = parse_number(p);
+							}
+						});
+						stop.color = stop.color * opacity;
+						gradient.stops.push_back(stop);
+						while (!next_is_end_tag()) {
+							if (next_is_comment()) parse_comment();
+							else if (next_is_start_tag()) skip_tag();
+							else parse_char_data();
+						}
+					}
+					else {
+						parse_attributes([](const StringView& name, const StringView& value) {});
+						while (!next_is_end_tag()) {
+							if (next_is_comment()) parse_comment();
+							else if (next_is_start_tag()) skip_tag();
+							else parse_char_data();
+						}
+					}
+					parse_end_tag(name);
+				}
+				else parse_char_data();
+			}
+			paint_servers[id] = std::make_shared<LinearGradientPaintServer>(gradient);
+		}
+		else {
+			parse_attributes([](const StringView& name, const StringView& value) {});
+			while (!next_is_end_tag()) {
+				if (next_is_comment()) parse_comment();
+				else if (next_is_start_tag()) skip_tag();
+				else parse_char_data();
+			}
 		}
 		parse_end_tag(name);
 	}
@@ -801,11 +916,11 @@ class SVGParser: public XMLParser {
 				}
 				else if (name == "style") {
 					StyleParser p(value);
-					p.parse_style(style);
+					p.parse_style(style, paint_servers);
 				}
 				else {
 					StyleParser p(value);
-					p.parse_attribute(name, style);
+					p.parse_attribute(name, style, paint_servers);
 				}
 			});
 			document.draw(path, style, transformation);
@@ -825,7 +940,7 @@ class SVGParser: public XMLParser {
 				}
 				else {
 					StyleParser p(value);
-					p.parse_attribute(name, style);
+					p.parse_attribute(name, style, paint_servers);
 				}
 			});
 			while (!next_is_end_tag()) {
@@ -835,6 +950,14 @@ class SVGParser: public XMLParser {
 			}
 			transformation = previous_transformation;
 			style = previous_style;
+		}
+		else if (name == "defs") {
+			parse_attributes([](const StringView& name, const StringView& value) {});
+			while (!next_is_end_tag()) {
+				if (next_is_comment()) parse_comment();
+				else if (next_is_start_tag()) parse_def();
+				else parse_char_data();
+			}
 		}
 		else {
 			parse_attributes([](const StringView& name, const StringView& value) {});

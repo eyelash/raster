@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="300" height="300" xmlns="http://www.w3.org/2000/svg">
+<path fill="#EEE" d="M 0 0 L 300 0 300 300 0 300 Z"/>
+<path fill="#333" d="M 50 50 L 100 50 200 250 50 250 Z"/>
+<path fill="#444" d="M 100 50 L 200 250 250 250 250 50 Z"/>
+</svg>
