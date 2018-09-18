@@ -633,7 +633,7 @@ public:
 			paint = std::make_shared<ColorPaint>(parse_color());
 		}
 	}
-	void parse_attribute(const StringView& name, Style& style) {
+	bool parse_attribute(const StringView& name, Style& style) {
 		if (name == "fill") {
 			parse_paint(style.fill);
 		}
@@ -648,6 +648,30 @@ public:
 		}
 		else if (name == "stroke-opacity") {
 			style.stroke_opacity = parse_number(*this);
+		}
+		else {
+			return false;
+		}
+		return true;
+	}
+	void parse_style(Style& style) {
+		parse_all(white_space);
+		while (has_next()) {
+			StringView start = get();
+			parse_all([](Character c) {
+				return c != ':' && !white_space(c);
+			});
+			StringView key = get() - start;
+			parse_all(white_space);
+			parse(':');
+			parse_all(white_space);
+			if (!parse_attribute(key, style)) {
+				parse_all([](Character c) {
+					return c != ';';
+				});
+			}
+			parse(';');
+			parse_all(white_space);
 		}
 	}
 };
@@ -774,6 +798,10 @@ class SVGParser: public XMLParser {
 				if (name == "d") {
 					PathParser p(value, path);
 					p.parse();
+				}
+				else if (name == "style") {
+					StyleParser p(value);
+					p.parse_style(style);
 				}
 				else {
 					StyleParser p(value);
