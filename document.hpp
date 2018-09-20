@@ -225,11 +225,62 @@ struct LinearGradient: Gradient {
 	}
 };
 
+struct RadialGradient: Gradient {
+	Point c;
+	float r;
+	Point f;
+	float fr;
+	RadialGradient(): c(.5f, .5f), r(.5f), f(.5f, .5f), fr(0.f) {}
+	RadialGradient(const Point& c, float r, const Point& f, float fr, std::initializer_list<Stop> stops): Gradient(stops), c(c), r(r), f(f), fr(fr) {}
+	RadialGradient(const Point& c, float r, const Point& f, std::initializer_list<Stop> stops): RadialGradient(c, r, f, 0.f, stops) {}
+	RadialGradient(const Point& c, float r, std::initializer_list<Stop> stops): RadialGradient(c, r, c, stops) {}
+	static constexpr float sq(float x) {
+		return x * x;
+	}
+	Color evaluate(const Point& p) const {
+		// solving for t in length(f + (c - f) * t - p) == fr + (r - fr) * t
+		const float A = sq(c.x - f.x) + sq(c.y - f.y) - sq(r - fr);
+		const float B = (c.x - f.x) * (f.x - p.x) + (c.y - f.y) * (f.y - p.y) - fr * (r - fr);
+		const float C = sq(f.x - p.x) + sq(f.y - p.y) - sq(fr);
+		// solving for t in A*A*t + 2*B*t + C == 0
+		float t;
+		if (A == 0.f) {
+			if (B == 0.f) {
+				return Color();
+			}
+			else {
+				t = -C / (2.f * B);
+			}
+		}
+		else {
+			const float D = sq(B) - A * C;
+			if (D < 0.f) {
+				return Color();
+			}
+			if (fr > r) {
+				t = (-B + std::sqrt(D)) / A;
+			}
+			else {
+				t = (-B - std::sqrt(D)) / A;
+			}
+		}
+		return Gradient::evaluate(t);
+	}
+};
+
 struct LinearGradientPaint: Paint {
 	LinearGradient gradient;
 	LinearGradientPaint(const LinearGradient& gradient): gradient(gradient) {}
 	Color evaluate(const Point& point) override {
 		return gradient.evaluate(point);
+	}
+};
+
+struct RadialGradientPaint: Paint {
+	RadialGradient gradient;
+	RadialGradientPaint(const RadialGradient& gradient): gradient(gradient) {}
+	Color evaluate(const Point& p) override {
+		return gradient.evaluate(p);
 	}
 };
 
@@ -268,6 +319,14 @@ struct LinearGradientPaintServer: PaintServer {
 	LinearGradientPaintServer(const LinearGradient& gradient): gradient(gradient) {}
 	std::shared_ptr<Paint> get_paint(const Transformation& transformation) override {
 		return std::make_shared<TransformationPaint>(std::make_shared<LinearGradientPaint>(gradient), transformation.invert());
+	}
+};
+
+struct RadialGradientPaintServer: PaintServer {
+	RadialGradient gradient;
+	RadialGradientPaintServer(const RadialGradient& gradient): gradient(gradient) {}
+	std::shared_ptr<Paint> get_paint(const Transformation& transformation) override {
+		return std::make_shared<TransformationPaint>(std::make_shared<RadialGradientPaint>(gradient), transformation.invert());
 	}
 };
 
