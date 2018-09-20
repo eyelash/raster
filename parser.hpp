@@ -49,6 +49,9 @@ public:
 	constexpr bool operator <(const StringView& rhs) const {
 		return size != rhs.size ? size < rhs.size : strncmp(s, rhs.s, size) < 0;
 	}
+	constexpr operator bool() const {
+		return size > 0;
+	}
 	constexpr bool has_next() const {
 		return size > 0;
 	}
