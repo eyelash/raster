@@ -122,6 +122,35 @@ constexpr bool number_start_char(Character c) {
 	return numeric(c) || c == '-';
 }
 
+class XMLNode {
+	StringView name;
+	std::map<StringView, StringView> attributes;
+	std::vector<std::unique_ptr<XMLNode>> children;
+public:
+	XMLNode(const StringView& name): name(name) {}
+	const StringView& get_name() const {
+		return name;
+	}
+	void set_attribute(const StringView& name, const StringView& value) {
+		attributes[name] = value;
+	}
+	StringView get_attribute(const StringView& name) const {
+		auto i = attributes.find(name);
+		return i != attributes.end() ? i->second : StringView();
+	}
+	template <class F> void parse_attributes(F&& f) const {
+		for (auto& attribute: attributes) {
+			f(attribute.first, attribute.second);
+		}
+	}
+	void add_child(std::unique_ptr<XMLNode>&& child) {
+		children.push_back(std::move(child));
+	}
+	const std::vector<std::unique_ptr<XMLNode>>& get_children() const {
+		return children;
+	}
+};
+
 class XMLParser: public Parser {
 	static constexpr bool name_start_char(Character c) {
 		return c.between('a', 'z') || c.between('A', 'Z') || c == ':' || c == '_';
@@ -129,6 +158,7 @@ class XMLParser: public Parser {
 	static constexpr bool name_char(Character c) {
 		return name_start_char(c) || c == '-' || c == '.' || c.between('0', '9');
 	}
+	using Parser::parse;
 	StringView parse_name() {
 		StringView start = get();
 		if (!parse(name_start_char)) error("expected a name");
@@ -171,8 +201,6 @@ class XMLParser: public Parser {
 			}
 		}
 	}
-public:
-	XMLParser(const StringView& s): Parser(s) {}
 	void skip_prolog() {
 		if (parse("<?xml")) {
 			while (!parse("?>")) {
@@ -240,6 +268,26 @@ public:
 			return c != '<';
 		});
 		return get() - start;
+	}
+	std::unique_ptr<XMLNode> parse_node() {
+		StringView name = parse_start_tag();
+		std::unique_ptr<XMLNode> node(new XMLNode(name));
+		parse_attributes([&](const StringView& name, const StringView& value) {
+			node->set_attribute(name, value);
+		});
+		while (!next_is_end_tag()) {
+			if (next_is_comment()) parse_comment();
+			else if (next_is_start_tag()) node->add_child(parse_node());
+			else parse_char_data();
+		}
+		parse_end_tag(name);
+		return node;
+	}
+public:
+	XMLParser(const StringView& s): Parser(s) {}
+	std::unique_ptr<XMLNode> parse() {
+		skip_prolog();
+		return parse_node();
 	}
 };
 
@@ -803,22 +851,12 @@ class SVGParser: public XMLParser {
 	Transformation transformation;
 	Style style;
 	PaintServerMap paint_servers;
-	void skip_tag() {
-		StringView name = parse_start_tag();
-		parse_attributes([](const StringView& name, const StringView& value) {});
-		while (!next_is_end_tag()) {
-			if (next_is_comment()) parse_comment();
-			else if (next_is_start_tag()) skip_tag();
-			else parse_char_data();
-		}
-		parse_end_tag(name);
-	}
-	void parse_gradient(Gradient& gradient) {
-		StringView name = parse_start_tag();
+	void parse_gradient(const std::unique_ptr<XMLNode>& node, Gradient& gradient) {
+		const StringView& name = node->get_name();
 		if (name == "stop") {
 			Gradient::Stop stop;
 			float opacity = 1.f;
-			parse_attributes([&](const StringView& name, const StringView& value) {
+			node->parse_attributes([&](const StringView& name, const StringView& value) {
 				if (name == "offset") {
 					Parser p(value);
 					stop.pos = parse_number(p);
@@ -837,29 +875,15 @@ class SVGParser: public XMLParser {
 			});
 			stop.color = stop.color * opacity;
 			gradient.stops.push_back(stop);
-			while (!next_is_end_tag()) {
-				if (next_is_comment()) parse_comment();
-				else if (next_is_start_tag()) skip_tag();
-				else parse_char_data();
-			}
 		}
-		else {
-			parse_attributes([](const StringView& name, const StringView& value) {});
-			while (!next_is_end_tag()) {
-				if (next_is_comment()) parse_comment();
-				else if (next_is_start_tag()) skip_tag();
-				else parse_char_data();
-			}
-		}
-		parse_end_tag(name);
 	}
-	void parse_def() {
-		StringView name = parse_start_tag();
+	void parse_def(const std::unique_ptr<XMLNode>& node) {
+		const StringView& name = node->get_name();
 		if (name == "linearGradient") {
 			LinearGradient gradient;
 			StringView id;
 			Transformation transformation;
-			parse_attributes([&](const StringView& name, const StringView& value) {
+			node->parse_attributes([&](const StringView& name, const StringView& value) {
 				if (name == "id") {
 					id = value;
 				}
@@ -889,17 +913,15 @@ class SVGParser: public XMLParser {
 			});
 			gradient.start = transformation * gradient.start;
 			gradient.end = transformation * gradient.end;
-			while (!next_is_end_tag()) {
-				if (next_is_comment()) parse_comment();
-				else if (next_is_start_tag()) parse_gradient(gradient);
-				else parse_char_data();
+			for (auto& child: node->get_children()) {
+				parse_gradient(child, gradient);
 			}
 			paint_servers[id] = std::make_shared<LinearGradientPaintServer>(gradient);
 		}
 		else if (name == "radialGradient") {
 			RadialGradient gradient;
 			StringView id;
-			parse_attributes([&](const StringView& name, const StringView& value) {
+			node->parse_attributes([&](const StringView& name, const StringView& value) {
 				if (name == "id") {
 					id = value;
 				}
@@ -930,28 +952,17 @@ class SVGParser: public XMLParser {
 					// TODO: implement
 				}
 			});
-			while (!next_is_end_tag()) {
-				if (next_is_comment()) parse_comment();
-				else if (next_is_start_tag()) parse_gradient(gradient);
-				else parse_char_data();
+			for (auto& child: node->get_children()) {
+				parse_gradient(child, gradient);
 			}
 			paint_servers[id] = std::make_shared<RadialGradientPaintServer>(gradient);
 		}
-		else {
-			parse_attributes([](const StringView& name, const StringView& value) {});
-			while (!next_is_end_tag()) {
-				if (next_is_comment()) parse_comment();
-				else if (next_is_start_tag()) skip_tag();
-				else parse_char_data();
-			}
-		}
-		parse_end_tag(name);
 	}
-	void parse_tag() {
-		StringView name = parse_start_tag();
+	void parse_tag(const std::unique_ptr<XMLNode>& node) {
+		const StringView& name = node->get_name();
 		if (name == "path") {
 			Path path;
-			parse_attributes([&](const StringView& name, const StringView& value) {
+			node->parse_attributes([&](const StringView& name, const StringView& value) {
 				if (name == "d") {
 					PathParser p(value, path);
 					p.parse();
@@ -966,16 +977,11 @@ class SVGParser: public XMLParser {
 				}
 			});
 			document.draw(path, style, transformation);
-			while (!next_is_end_tag()) {
-				if (next_is_comment()) parse_comment();
-				else if (next_is_start_tag()) skip_tag();
-				else parse_char_data();
-			}
 		}
 		else if (name == "g") {
 			Transformation previous_transformation = transformation;
 			Style previous_style = style;
-			parse_attributes([&](const StringView& name, const StringView& value) {
+			node->parse_attributes([&](const StringView& name, const StringView& value) {
 				if (name == "transform") {
 					TransformParser p(value);
 					transformation = transformation * p.parse();
@@ -985,45 +991,30 @@ class SVGParser: public XMLParser {
 					p.parse_attribute(name, style, paint_servers);
 				}
 			});
-			while (!next_is_end_tag()) {
-				if (next_is_comment()) parse_comment();
-				else if (next_is_start_tag()) parse_tag();
-				else parse_char_data();
+			for (auto& child: node->get_children()) {
+				parse_tag(child);
 			}
 			transformation = previous_transformation;
 			style = previous_style;
 		}
 		else if (name == "defs") {
-			parse_attributes([](const StringView& name, const StringView& value) {});
-			while (!next_is_end_tag()) {
-				if (next_is_comment()) parse_comment();
-				else if (next_is_start_tag()) parse_def();
-				else parse_char_data();
+			for (auto& child: node->get_children()) {
+				parse_def(child);
 			}
 		}
-		else {
-			parse_attributes([](const StringView& name, const StringView& value) {});
-			while (!next_is_end_tag()) {
-				if (next_is_comment()) parse_comment();
-				else if (next_is_start_tag()) skip_tag();
-				else parse_char_data();
-			}
-		}
-		parse_end_tag(name);
 	}
 public:
 	SVGParser(const StringView& s, Document& document): XMLParser(s), document(document) {}
 	void parse() {
-		skip_prolog();
-		StringView name = parse_start_tag();
-		if (name != "svg") error("expected svg tag");
+		std::unique_ptr<XMLNode> root = XMLParser::parse();
+		if (root->get_name() != "svg") error("expected svg tag");
 		struct {
 			float x = 0.f;
 			float y = 0.f;
 			float width = 0.f;
 			float height = 0.f;
 		} view_box;
-		parse_attributes([&](const StringView& name, const StringView& value) {
+		root->parse_attributes([&](const StringView& name, const StringView& value) {
 			if (name == "viewBox") {
 				Parser p(value);
 				p.parse_all(::white_space);
@@ -1049,12 +1040,9 @@ public:
 		if (view_box.width > 0.f && view_box.height > 0.f) {
 			transformation = Transformation::scale(document.width/view_box.width, document.height/view_box.height) * Transformation::translate(-view_box.x, -view_box.y);
 		}
-		while (!next_is_end_tag()) {
-			if (next_is_comment()) parse_comment();
-			else if (next_is_start_tag()) parse_tag();
-			else parse_char_data();
+		for (auto& child: root->get_children()) {
+			parse_tag(child);
 		}
-		parse_end_tag(name);
 	}
 };
 
