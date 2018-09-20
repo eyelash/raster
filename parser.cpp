@@ -813,6 +813,46 @@ class SVGParser: public XMLParser {
 		}
 		parse_end_tag(name);
 	}
+	void parse_gradient(Gradient& gradient) {
+		StringView name = parse_start_tag();
+		if (name == "stop") {
+			Gradient::Stop stop;
+			float opacity = 1.f;
+			parse_attributes([&](const StringView& name, const StringView& value) {
+				if (name == "offset") {
+					Parser p(value);
+					stop.pos = parse_number(p);
+					if (p.parse('%')) {
+						stop.pos /= 100.f;
+					}
+				}
+				else if (name == "stop-color") {
+					StyleParser p(value);
+					stop.color = p.parse_color();
+				}
+				else if (name == "stop-opacity") {
+					Parser p(value);
+					opacity = parse_number(p);
+				}
+			});
+			stop.color = stop.color * opacity;
+			gradient.stops.push_back(stop);
+			while (!next_is_end_tag()) {
+				if (next_is_comment()) parse_comment();
+				else if (next_is_start_tag()) skip_tag();
+				else parse_char_data();
+			}
+		}
+		else {
+			parse_attributes([](const StringView& name, const StringView& value) {});
+			while (!next_is_end_tag()) {
+				if (next_is_comment()) parse_comment();
+				else if (next_is_start_tag()) skip_tag();
+				else parse_char_data();
+			}
+		}
+		parse_end_tag(name);
+	}
 	void parse_def() {
 		StringView name = parse_start_tag();
 		if (name == "linearGradient") {
@@ -851,49 +891,51 @@ class SVGParser: public XMLParser {
 			gradient.end = transformation * gradient.end;
 			while (!next_is_end_tag()) {
 				if (next_is_comment()) parse_comment();
-				else if (next_is_start_tag()) {
-					StringView name = parse_start_tag();
-					if (name == "stop") {
-						Gradient::Stop stop;
-						float opacity = 1.f;
-						parse_attributes([&](const StringView& name, const StringView& value) {
-							if (name == "offset") {
-								Parser p(value);
-								stop.pos = parse_number(p);
-								if (p.parse('%')) {
-									stop.pos /= 100.f;
-								}
-							}
-							else if (name == "stop-color") {
-								StyleParser p(value);
-								stop.color = p.parse_color();
-							}
-							else if (name == "stop-opacity") {
-								Parser p(value);
-								opacity = parse_number(p);
-							}
-						});
-						stop.color = stop.color * opacity;
-						gradient.stops.push_back(stop);
-						while (!next_is_end_tag()) {
-							if (next_is_comment()) parse_comment();
-							else if (next_is_start_tag()) skip_tag();
-							else parse_char_data();
-						}
-					}
-					else {
-						parse_attributes([](const StringView& name, const StringView& value) {});
-						while (!next_is_end_tag()) {
-							if (next_is_comment()) parse_comment();
-							else if (next_is_start_tag()) skip_tag();
-							else parse_char_data();
-						}
-					}
-					parse_end_tag(name);
-				}
+				else if (next_is_start_tag()) parse_gradient(gradient);
 				else parse_char_data();
 			}
 			paint_servers[id] = std::make_shared<LinearGradientPaintServer>(gradient);
+		}
+		else if (name == "radialGradient") {
+			RadialGradient gradient;
+			StringView id;
+			parse_attributes([&](const StringView& name, const StringView& value) {
+				if (name == "id") {
+					id = value;
+				}
+				else if (name == "cx") {
+					Parser p(value);
+					gradient.c.x = parse_number(p);
+				}
+				else if (name == "cy") {
+					Parser p(value);
+					gradient.c.y = parse_number(p);
+				}
+				else if (name == "r") {
+					Parser p(value);
+					gradient.r = parse_number(p);
+				}
+				else if (name == "fx") {
+					Parser p(value);
+					gradient.f.x = parse_number(p);
+				}
+				else if (name == "fy") {
+					Parser p(value);
+					gradient.f.y = parse_number(p);
+				}
+				else if (name == "gradientUnits" && value == "userSpaceOnUse") {
+					// TODO: implement
+				}
+				else if (name == "gradientTransform") {
+					// TODO: implement
+				}
+			});
+			while (!next_is_end_tag()) {
+				if (next_is_comment()) parse_comment();
+				else if (next_is_start_tag()) parse_gradient(gradient);
+				else parse_char_data();
+			}
+			paint_servers[id] = std::make_shared<RadialGradientPaintServer>(gradient);
 		}
 		else {
 			parse_attributes([](const StringView& name, const StringView& value) {});
