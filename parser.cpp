@@ -131,15 +131,10 @@ public:
 		auto i = attributes.find(name);
 		return i != attributes.end() ? i->second : StringView();
 	}
-	template <class F> void parse_attributes(F&& f) const {
-		for (auto& attribute: attributes) {
-			f(attribute.first, attribute.second);
-		}
-	}
 	void add_child(std::unique_ptr<XMLNode>&& child) {
 		children.push_back(std::move(child));
 	}
-	const std::vector<std::unique_ptr<XMLNode>>& get_children() const {
+	std::vector<std::unique_ptr<XMLNode>>& get_children() {
 		return children;
 	}
 };
@@ -694,28 +689,7 @@ public:
 			paint = std::make_shared<ColorPaintServer>(parse_color());
 		}
 	}
-	bool parse_attribute(const StringView& name, Style& style, const PaintServerMap& paint_servers) {
-		if (name == "fill") {
-			parse_paint(style.fill, paint_servers);
-		}
-		else if (name == "fill-opacity") {
-			style.fill_opacity = parse_number();
-		}
-		else if (name == "stroke") {
-			parse_paint(style.stroke, paint_servers);
-		}
-		else if (name == "stroke-width") {
-			style.stroke_width = parse_number();
-		}
-		else if (name == "stroke-opacity") {
-			style.stroke_opacity = parse_number();
-		}
-		else {
-			return false;
-		}
-		return true;
-	}
-	void parse_style(Style& style, const PaintServerMap& paint_servers) {
+	void parse_style(std::unique_ptr<XMLNode>& node) {
 		parse_all(white_space);
 		while (has_next()) {
 			StringView start = get();
@@ -726,11 +700,12 @@ public:
 			parse_all(white_space);
 			parse(':');
 			parse_all(white_space);
-			if (!parse_attribute(key, style, paint_servers)) {
-				parse_all([](Character c) {
-					return c != ';';
-				});
-			}
+			start = get();
+			parse_all([](Character c) {
+				return c != ';';
+			});
+			StringView value = get() - start;
+			node->set_attribute(key, value);
 			parse(';');
 			parse_all(white_space);
 		}
@@ -851,7 +826,11 @@ class SVGParser: public XMLParser {
 			return default_value;
 		}
 	}
-	void parse_gradient(const std::unique_ptr<XMLNode>& node, Gradient& gradient) {
+	void parse_gradient(std::unique_ptr<XMLNode>& node, Gradient& gradient) {
+		if (StringView value = node->get_attribute("style")) {
+			StyleParser p(value);
+			p.parse_style(node);
+		}
 		const StringView& name = node->get_name();
 		if (name == "stop") {
 			Gradient::Stop stop;
@@ -871,7 +850,7 @@ class SVGParser: public XMLParser {
 			gradient.stops.push_back(stop);
 		}
 	}
-	void parse_def(const std::unique_ptr<XMLNode>& node) {
+	void parse_def(std::unique_ptr<XMLNode>& node) {
 		const StringView& name = node->get_name();
 		if (name == "linearGradient") {
 			LinearGradient gradient;
@@ -914,39 +893,53 @@ class SVGParser: public XMLParser {
 			paint_servers[id] = std::make_shared<RadialGradientPaintServer>(gradient);
 		}
 	}
-	void parse_node(const std::unique_ptr<XMLNode>& node) {
+	void parse_style(std::unique_ptr<XMLNode>& node) {
+		if (StringView value = node->get_attribute("style")) {
+			StyleParser p(value);
+			p.parse_style(node);
+		}
+		if (StringView value = node->get_attribute("fill")) {
+			StyleParser p(value);
+			p.parse_paint(style.fill, paint_servers);
+		}
+		if (StringView value = node->get_attribute("fill-opacity")) {
+			Parser p(value);
+			style.fill_opacity = p.parse_number();
+		}
+		if (StringView value = node->get_attribute("stroke")) {
+			StyleParser p(value);
+			p.parse_paint(style.stroke, paint_servers);
+		}
+		if (StringView value = node->get_attribute("stroke-width")) {
+			Parser p(value);
+			style.stroke_width = p.parse_number();
+		}
+		if (StringView value = node->get_attribute("stroke-opacity")) {
+			Parser p(value);
+			style.stroke_opacity = p.parse_number();
+		}
+	}
+	void parse_node(std::unique_ptr<XMLNode>& node) {
 		const StringView& name = node->get_name();
 		if (name == "path") {
 			Path path;
-			node->parse_attributes([&](const StringView& name, const StringView& value) {
-				if (name == "d") {
-					PathParser p(value, path);
-					p.parse();
-				}
-				else if (name == "style") {
-					StyleParser p(value);
-					p.parse_style(style, paint_servers);
-				}
-				else {
-					StyleParser p(value);
-					p.parse_attribute(name, style, paint_servers);
-				}
-			});
+			Style previous_style = style;
+			parse_style(node);
+			if (StringView value = node->get_attribute("d")) {
+				PathParser p(value, path);
+				p.parse();
+			}
 			document.draw(path, style, transformation);
+			style = previous_style;
 		}
 		else if (name == "g") {
 			Transformation previous_transformation = transformation;
 			Style previous_style = style;
-			node->parse_attributes([&](const StringView& name, const StringView& value) {
-				if (name == "transform") {
-					TransformParser p(value);
-					transformation = transformation * p.parse();
-				}
-				else {
-					StyleParser p(value);
-					p.parse_attribute(name, style, paint_servers);
-				}
-			});
+			parse_style(node);
+			if (StringView value = node->get_attribute("transform")) {
+				TransformParser p(value);
+				transformation = transformation * p.parse();
+			}
 			for (auto& child: node->get_children()) {
 				parse_node(child);
 			}
