@@ -331,7 +331,7 @@ struct RadialGradientPaintServer: PaintServer {
 };
 
 struct Style {
-	std::shared_ptr<PaintServer> fill;
+	std::shared_ptr<PaintServer> fill = std::make_shared<ColorPaintServer>(Color::rgb(0, 0, 0));
 	float fill_opacity = 1.f;
 	std::shared_ptr<PaintServer> stroke;
 	float stroke_width = 1.f;
