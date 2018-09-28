@@ -37,6 +37,9 @@ public:
 	bool has_next() const {
 		return s.has_next();
 	}
+	Character next() {
+		return s.next();
+	}
 	template <class F> bool parse(F&& f) {
 		if (!s.has_next()) return false;
 		StringView copy = s;
@@ -292,129 +295,150 @@ public:
 	void parse() {
 		Point current_point(0.f, 0.f);
 		Point initial_point(0.f, 0.f);
-		Point p2(0.f, 0.f);
+		Point cubic_p2(0.f, 0.f);
+		Point quadratic_p1(0.f, 0.f);
 		parse_all(white_space);
 		while (has_next()) {
-			if (parse('M')) {
-				parse_all(white_space);
+			const Character command = next();
+			parse_all(white_space);
+			if (command == 'M') {
 				current_point = parse_point();
 				path.move_to(current_point);
 				initial_point = current_point;
-				p2 = current_point;
 				while (copy().parse(number_start_char)) {
 					current_point = parse_point();
 					path.line_to(current_point);
-					p2 = current_point;
 				}
 			}
-			else if (parse('m')) {
-				parse_all(white_space);
+			else if (command == 'm') {
 				current_point = current_point + parse_point();
 				path.move_to(current_point);
 				initial_point = current_point;
-				p2 = current_point;
 				while (copy().parse(number_start_char)) {
 					current_point = current_point + parse_point();
 					path.line_to(current_point);
-					p2 = current_point;
 				}
 			}
-			else if (parse('L')) {
-				parse_all(white_space);
+			else if (command == 'L') {
 				while (copy().parse(number_start_char)) {
 					current_point = parse_point();
 					path.line_to(current_point);
-					p2 = current_point;
 				}
 			}
-			else if (parse('l')) {
-				parse_all(white_space);
+			else if (command == 'l') {
 				while (copy().parse(number_start_char)) {
 					current_point = current_point + parse_point();
 					path.line_to(current_point);
-					p2 = current_point;
 				}
 			}
-			else if (parse('H')) {
-				parse_all(white_space);
+			else if (command == 'H') {
 				while (copy().parse(number_start_char)) {
 					current_point.x = parse_number();
 					parse_all(white_space_or_comma);
 					path.line_to(current_point);
-					p2 = current_point;
 				}
 			}
-			else if (parse('h')) {
-				parse_all(white_space);
+			else if (command == 'h') {
 				while (copy().parse(number_start_char)) {
 					current_point.x += parse_number();
 					parse_all(white_space_or_comma);
 					path.line_to(current_point);
-					p2 = current_point;
 				}
 			}
-			else if (parse('V')) {
-				parse_all(white_space);
+			else if (command == 'V') {
 				while (copy().parse(number_start_char)) {
 					current_point.y = parse_number();
 					parse_all(white_space_or_comma);
 					path.line_to(current_point);
-					p2 = current_point;
 				}
 			}
-			else if (parse('v')) {
-				parse_all(white_space);
+			else if (command == 'v') {
 				while (copy().parse(number_start_char)) {
 					current_point.y += parse_number();
 					parse_all(white_space_or_comma);
 					path.line_to(current_point);
-					p2 = current_point;
 				}
 			}
-			else if (parse('C')) {
-				parse_all(white_space);
+			else if (command == 'C') {
 				while (copy().parse(number_start_char)) {
 					const Point p1 = parse_point();
-					p2 = parse_point();
+					const Point p2 = parse_point();
 					current_point = parse_point();
 					path.curve_to(p1, p2, current_point);
+					cubic_p2 = p2;
 				}
 			}
-			else if (parse('c')) {
-				parse_all(white_space);
+			else if (command == 'c') {
 				while (copy().parse(number_start_char)) {
 					const Point p1 = current_point + parse_point();
-					p2 = current_point + parse_point();
+					const Point p2 = current_point + parse_point();
 					current_point = current_point + parse_point();
 					path.curve_to(p1, p2, current_point);
+					cubic_p2 = p2;
 				}
 			}
-			else if (parse('S')) {
-				parse_all(white_space);
+			else if (command == 'S') {
 				while (copy().parse(number_start_char)) {
-					const Point p1 = current_point * 2.f - p2;
-					p2 = parse_point();
+					const Point p1 = current_point * 2.f - cubic_p2;
+					const Point p2 = parse_point();
 					current_point = parse_point();
 					path.curve_to(p1, p2, current_point);
+					cubic_p2 = p2;
 				}
 			}
-			else if (parse('s')) {
-				parse_all(white_space);
+			else if (command == 's') {
 				while (copy().parse(number_start_char)) {
-					const Point p1 = current_point * 2.f - p2;
-					p2 = current_point + parse_point();
+					const Point p1 = current_point * 2.f - cubic_p2;
+					const Point p2 = current_point + parse_point();
 					current_point = current_point + parse_point();
 					path.curve_to(p1, p2, current_point);
+					cubic_p2 = p2;
 				}
 			}
-			else if (parse('Z') || parse('z')) {
-				parse_all(white_space);
+			else if (command == 'Q') {
+				while (copy().parse(number_start_char)) {
+					const Point p1 = parse_point();
+					current_point = parse_point();
+					path.quadratic_curve_to(p1, current_point);
+					quadratic_p1 = p1;
+				}
+			}
+			else if (command == 'q') {
+				while (copy().parse(number_start_char)) {
+					const Point p1 = current_point + parse_point();
+					current_point = current_point + parse_point();
+					path.quadratic_curve_to(p1, current_point);
+					quadratic_p1 = p1;
+				}
+			}
+			else if (command == 'T') {
+				while (copy().parse(number_start_char)) {
+					const Point p1 = current_point * 2.f - quadratic_p1;
+					current_point = parse_point();
+					path.quadratic_curve_to(p1, current_point);
+					quadratic_p1 = p1;
+				}
+			}
+			else if (command == 't') {
+				while (copy().parse(number_start_char)) {
+					const Point p1 = current_point * 2.f - quadratic_p1;
+					current_point = current_point + parse_point();
+					path.quadratic_curve_to(p1, current_point);
+					quadratic_p1 = p1;
+				}
+			}
+			else if (command == 'Z' || command == 'z') {
 				path.close();
 				current_point = initial_point;
-				p2 = current_point;
 			}
 			else {
 				error("unexpected command");
+			}
+			if (command != 'C' && command != 'c' && command != 'S' && command != 's') {
+				cubic_p2 = current_point;
+			}
+			if (command != 'Q' && command != 'q' && command != 'T' && command != 't') {
+				quadratic_p1 = current_point;
 			}
 		}
 	}

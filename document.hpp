@@ -139,6 +139,10 @@ struct Path {
 			curve_to(p8, p6, p3);
 		}
 	}
+	void quadratic_curve_to(const Point& p1, const Point& p2) {
+		const Point& p0 = current_point();
+		curve_to(p0 * (1.f / 3.f) + p1 * (2.f / 3.f), p1 * (2.f / 3.f) + p2 * (1.f / 3.f), p2);
+	}
 	void close() {
 		subpaths.back().closed = true;
 	}
