@@ -5,7 +5,7 @@
 - [x] dithering
 - [x] stroking
 - [x] radial gradients
-- [ ] arcs
+- [x] arcs
 - [ ] clipping
 - [ ] filters
 - [ ] XLink

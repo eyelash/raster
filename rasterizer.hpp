@@ -9,6 +9,10 @@ All rights reserved.
 #include <cstddef>
 #include <memory>
 
+constexpr float clamp(float value, float min, float max) {
+	return value < min ? min : (max < value ? max : value);
+}
+
 struct Point {
 	float x, y;
 	constexpr Point(float x, float y): x(x), y(y) {}
@@ -17,6 +21,9 @@ struct Point {
 	}
 	constexpr Point operator -(const Point& p) const {
 		return Point(x - p.x, y - p.y);
+	}
+	constexpr Point operator -() const {
+		return Point(-x, -y);
 	}
 	constexpr Point operator *(float f) const {
 		return Point(x * f, y * f);

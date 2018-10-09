@@ -427,6 +427,32 @@ public:
 					quadratic_p1 = p1;
 				}
 			}
+			else if (command == 'A') {
+				while (copy().parse(number_start_char)) {
+					const Point r = parse_point();
+					const float rotation = parse_number();
+					parse_all(white_space_or_comma);
+					const bool large_arc = parse_number();
+					parse_all(white_space_or_comma);
+					const bool sweep = parse_number();
+					parse_all(white_space_or_comma);
+					current_point = parse_point();
+					path.arc_to(r, rotation, large_arc, sweep, current_point);
+				}
+			}
+			else if (command == 'a') {
+				while (copy().parse(number_start_char)) {
+					const Point r = parse_point();
+					const float rotation = parse_number();
+					parse_all(white_space_or_comma);
+					const bool large_arc = parse_number();
+					parse_all(white_space_or_comma);
+					const bool sweep = parse_number();
+					parse_all(white_space_or_comma);
+					current_point = current_point + parse_point();
+					path.arc_to(r, rotation, large_arc, sweep, current_point);
+				}
+			}
 			else if (command == 'Z' || command == 'z') {
 				path.close();
 				current_point = initial_point;

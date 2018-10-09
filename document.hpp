@@ -143,6 +143,54 @@ struct Path {
 		const Point& p0 = current_point();
 		curve_to(p0 * (1.f / 3.f) + p1 * (2.f / 3.f), p1 * (2.f / 3.f) + p2 * (1.f / 3.f), p2);
 	}
+	void add_arc(const Point& center, float radius, float start_angle, float sweep_angle, const Transformation& t = Transformation()) {
+		Point start = center + Point(std::cos(start_angle), std::sin(start_angle)) * radius;
+		while (sweep_angle != 0.f) {
+			const float current_sweep_angle = clamp(sweep_angle, -M_PI / 2.f, M_PI / 2.f);
+			const float end_angle = start_angle + current_sweep_angle;
+			const Point end = center + Point(std::cos(end_angle), std::sin(end_angle)) * radius;
+			const float h = 4.f / 3.f * std::tan(current_sweep_angle / 4.f);
+			const Point p1 = start + Point(-std::sin(start_angle), std::cos(start_angle)) * radius * h;
+			const Point p2 = end + Point(std::sin(end_angle), -std::cos(end_angle)) * radius * h;
+			curve_to(t * p1, t * p2, t * end);
+			start_angle = end_angle;
+			sweep_angle -= current_sweep_angle;
+			start = end;
+		}
+	}
+	static float angle(const Point& p) {
+		const float length = std::sqrt(p.x * p.x + p.y * p.y);
+		const float a = std::acos(p.x / length);
+		return p.y < 0.f ? -a : a;
+	}
+	void arc_to(Point r, float rotation, bool large_arc, bool sweep, const Point& end) {
+		const Point& start = current_point();
+		const Point p = Transformation::rotate(-rotation) * ((start - end) * .5f);
+		Point c(0.f, 0.f);
+		const float numerator = (r.x*r.x * r.y*r.y - r.x*r.x * p.y*p.y - r.y*r.y * p.x*p.x);
+		if (numerator < 0.f) {
+			r = r * std::sqrt(1.f - numerator / (r.x*r.x * r.y*r.y));
+		}
+		else {
+			const float denominator = (r.x*r.x * p.y*p.y + r.y*r.y * p.x*p.x);
+			c = Point(r.x*p.y/r.y, -r.y*p.x/r.x) * std::sqrt(numerator / denominator);
+			if (large_arc == sweep) {
+				c = c * -1.f;
+			}
+		}
+		const Point center = Transformation::rotate(rotation) * c + (start + end) * .5f;
+		const float start_angle = angle(Transformation::scale(1.f / r.x, 1.f / r.y) * (p - c));
+		const float end_angle = angle(Transformation::scale(1.f / r.x, 1.f / r.y) * (-p - c));
+		float sweep_angle = end_angle - start_angle;
+		if (sweep == false && sweep_angle > 0.f) {
+			sweep_angle -= 2.f * M_PI;
+		}
+		else if (sweep == true && sweep_angle < 0.f) {
+			sweep_angle += 2.f * M_PI;
+		}
+		const Transformation t = Transformation::translate(center.x, center.y) * Transformation::rotate(rotation) * Transformation::scale(r.x, r.y);
+		add_arc(Point(0.f, 0.f), 1.f, start_angle, sweep_angle, t);
+	}
 	void close() {
 		subpaths.back().closed = true;
 	}

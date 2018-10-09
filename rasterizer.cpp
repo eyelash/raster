@@ -17,10 +17,6 @@ All rights reserved.
 
 namespace {
 
-template <class T> constexpr const T& clamp(const T& value, const T& min, const T& max) {
-	return value < min ? min : (max < value ? max : value);
-}
-
 struct ShapeCompare {
 	bool operator ()(const Shape* s0, const Shape* s1) {
 		return s0->index < s1->index;
