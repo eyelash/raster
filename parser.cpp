@@ -468,6 +468,13 @@ public:
 			}
 		}
 	}
+	void parse_polyline() {
+		parse_all(white_space);
+		path.move_to(parse_point());
+		while (copy().parse(number_start_char)) {
+			path.line_to(parse_point());
+		}
+	}
 };
 
 struct NamedColor {
@@ -970,37 +977,118 @@ class SVGParser: public XMLParser {
 		}
 	}
 	void parse_node(std::unique_ptr<XMLNode>& node) {
+		Style previous_style = style;
+		parse_style(node);
+		Transformation previous_transformation = transformation;
+		if (StringView value = node->get_attribute("transform")) {
+			TransformParser p(value);
+			transformation = transformation * p.parse();
+		}
 		const StringView& name = node->get_name();
 		if (name == "path") {
 			Path path;
-			Style previous_style = style;
-			parse_style(node);
 			if (StringView value = node->get_attribute("d")) {
 				PathParser p(value, path);
 				p.parse();
 			}
 			document.draw(path, style, transformation);
-			style = previous_style;
+		}
+		else if (name == "rect") {
+			Path path;
+			const float x = get_number(node, "x", 0.f);
+			const float y = get_number(node, "y", 0.f);
+			const float width = get_number(node, "width", 0.f);
+			const float height = get_number(node, "height", 0.f);
+			float rx, ry;
+			if (node->get_attribute("rx")) {
+				rx = get_number(node, "rx", 0.f);
+				ry = get_number(node, "ry", rx);
+			}
+			else {
+				ry = get_number(node, "ry", 0.f);
+				rx = ry;
+			}
+			if (rx > 0.f && ry > 0.f) {
+				path.move_to(x + rx, y);
+				path.line_to(x + width - rx, y);
+				path.arc_to(Point(rx, ry), 0.f, false, true, Point(x + width, y + ry));
+				path.line_to(x + width, y + height - ry);
+				path.arc_to(Point(rx, ry), 0.f, false, true, Point(x + width - rx, y + height));
+				path.line_to(x + rx, y + height);
+				path.arc_to(Point(rx, ry), 0.f, false, true, Point(x, y + height - ry));
+				path.line_to(x, y + ry);
+				path.arc_to(Point(rx, ry), 0.f, false, true, Point(x + rx, y));
+			}
+			else {
+				path.move_to(x, y);
+				path.line_to(x + width, y);
+				path.line_to(x + width, y + height);
+				path.line_to(x, y + height);
+			}
+			path.close();
+			document.draw(path, style, transformation);
+		}
+		else if (name == "circle") {
+			Path path;
+			const float cx = get_number(node, "cx", 0.f);
+			const float cy = get_number(node, "cy", 0.f);
+			const float r = get_number(node, "r", 0.f);
+			path.move_to(cx + r, cy);
+			path.add_arc(Point(cx, cy), r, 0.f, 2.f * M_PI);
+			path.close();
+			document.draw(path, style, transformation);
+		}
+		else if (name == "ellipse") {
+			Path path;
+			const float cx = get_number(node, "cx", 0.f);
+			const float cy = get_number(node, "cy", 0.f);
+			const float rx = get_number(node, "rx", 0.f);
+			const float ry = get_number(node, "ry", 0.f);
+			const Transformation t = Transformation::scale(rx, ry);
+			path.move_to(cx + rx, cy);
+			path.add_arc(Point(cx, cy), 1.f, 0.f, 2.f * M_PI, t);
+			path.close();
+			document.draw(path, style, transformation);
+		}
+		else if (name == "line") {
+			Path path;
+			const float x1 = get_number(node, "x1", 0.f);
+			const float y1 = get_number(node, "y1", 0.f);
+			const float x2 = get_number(node, "x2", 0.f);
+			const float y2 = get_number(node, "y2", 0.f);
+			path.move_to(x1, y1);
+			path.line_to(x2, y2);
+			document.draw(path, style, transformation);
+		}
+		else if (name == "polyline") {
+			if (StringView value = node->get_attribute("points")) {
+				Path path;
+				PathParser p(value, path);
+				p.parse_polyline();
+				document.draw(path, style, transformation);
+			}
+		}
+		else if (name == "polygon") {
+			if (StringView value = node->get_attribute("points")) {
+				Path path;
+				PathParser p(value, path);
+				p.parse_polyline();
+				path.close();
+				document.draw(path, style, transformation);
+			}
 		}
 		else if (name == "g") {
-			Transformation previous_transformation = transformation;
-			Style previous_style = style;
-			parse_style(node);
-			if (StringView value = node->get_attribute("transform")) {
-				TransformParser p(value);
-				transformation = transformation * p.parse();
-			}
 			for (auto& child: node->get_children()) {
 				parse_node(child);
 			}
-			transformation = previous_transformation;
-			style = previous_style;
 		}
 		else if (name == "defs") {
 			for (auto& child: node->get_children()) {
 				parse_def(child);
 			}
 		}
+		transformation = previous_transformation;
+		style = previous_style;
 	}
 public:
 	SVGParser(const StringView& s, Document& document): XMLParser(s), document(document) {}
