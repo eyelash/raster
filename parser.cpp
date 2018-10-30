@@ -1087,6 +1087,11 @@ class SVGParser: public XMLParser {
 				parse_def(child);
 			}
 		}
+		else {
+			for (auto& child: node->get_children()) {
+				parse_node(child);
+			}
+		}
 		transformation = previous_transformation;
 		style = previous_style;
 	}
