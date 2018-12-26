@@ -17,13 +17,7 @@ All rights reserved.
 
 namespace {
 
-struct ShapeCompare {
-	bool operator ()(const Shape* s0, const Shape* s1) {
-		return s0->index < s1->index;
-	}
-};
-
-struct ShapeMap: std::map<const Shape*, int, ShapeCompare> {
+struct ShapeMap: std::map<const Shape*, int> {
 	Color get_color(const Point& point) const {
 		Color color;
 		for (auto& pair: *this) {
@@ -37,21 +31,6 @@ struct RasterizeLine: Line {
 	int direction;
 	const Shape* shape;
 	RasterizeLine(const Line& line, int direction, const Shape* shape): Line(line), direction(direction), shape(shape) {}
-};
-
-struct RasterizeSegment: Segment {
-	int direction;
-	const Shape* shape;
-	static constexpr int get_direction(const Segment& s) {
-		return s.y0 < s.y1 ? 1 : -1;
-	}
-	static constexpr Segment normalize_segment(const Segment& s) {
-		return s.y0 < s.y1 ? s : Segment(s.y1, s.y0, s.line);
-	}
-	RasterizeSegment(const Segment& segment, const Shape* shape): Segment(normalize_segment(segment)), direction(get_direction(segment)), shape(shape) {}
-	RasterizeLine get_line() const {
-		return RasterizeLine(line, direction, shape);
-	}
 };
 
 struct Strip {
@@ -251,7 +230,7 @@ void rasterize(const std::vector<Shape>& shapes, const char* file_name, size_t w
 	std::priority_queue<Event, std::vector<Event>, std::greater<Event>> events;
 	for (const Shape& shape: shapes) {
 		for (const Segment& s: shape.segments) {
-			size_t index = lines.size();
+			const size_t index = lines.size();
 			if (s.y0 < s.y1) {
 				lines.push_back(RasterizeLine(s.line, 1, &shape));
 				events.push(Event(Event::Type::LINE_START, s.y0, index));

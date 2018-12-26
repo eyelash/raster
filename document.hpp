@@ -78,10 +78,9 @@ struct Subpath {
 	}
 };
 
-struct Path {
+class Path {
 	Transformation t;
 	std::vector<Subpath> subpaths;
-	Path(const Transformation& t = Transformation()): t(t) {}
 	Point current_point() const {
 		if (subpaths.empty()) {
 			return Point(0.f, 0.f);
@@ -94,6 +93,34 @@ struct Path {
 			return subpath.points.back();
 		}
 	}
+	static constexpr float length_squared(const Point& p) {
+		return dot(p, p);
+	}
+	// returns the distance (squared) between p and the segment a-b
+	static float get_distance_squared(const Point& a, const Point& b, const Point& p) {
+		if (a == b) return length_squared(p - a);
+		const float u = dot(p - a, b - a) / length_squared(b - a);
+		if (u <= 0.f) return length_squared(p - a);
+		else if (u >= 1.f) return length_squared(p - b);
+		else return length_squared((p - a) - (b - a) * u);
+	}
+	static float get_error_squared(const Point& p0, const Point& p1, const Point& p2, const Point& p3) {
+		return std::max(get_distance_squared(p0, p3, p1), get_distance_squared(p0, p3, p2));
+	}
+	static float angle(const Point& p) {
+		const float length = std::sqrt(p.x * p.x + p.y * p.y);
+		const float a = std::acos(p.x / length);
+		return p.y < 0.f ? -a : a;
+	}
+	void fill_subpath(const Subpath& subpath, Shape& shape) const {
+		const std::vector<Point>& points = subpath.points;
+		for (size_t i = 1; i < points.size(); ++i) {
+			shape.append_segment(t * points[i-1], t * points[i]);
+		}
+		shape.append_segment(t * points.back(), t * points.front());
+	}
+public:
+	Path(const Transformation& t = Transformation()): t(t) {}
 	void move_to(const Point& p) {
 		subpaths.push_back(Subpath());
 		subpaths.back().points.push_back(p);
@@ -109,20 +136,6 @@ struct Path {
 	}
 	void line_to(float x, float y) {
 		line_to(Point(x, y));
-	}
-	static constexpr float length_squared(const Point& p) {
-		return dot(p, p);
-	}
-	// returns the distance (squared) between p and the segment a-b
-	static float get_distance_squared(const Point& a, const Point& b, const Point& p) {
-		if (a == b) return length_squared(p - a);
-		const float u = dot(p - a, b - a) / length_squared(b - a);
-		if (u <= 0.f) return length_squared(p - a);
-		else if (u >= 1.f) return length_squared(p - b);
-		else return length_squared((p - a) - (b - a) * u);
-	}
-	float get_error_squared(const Point& p0, const Point& p1, const Point& p2, const Point& p3) {
-		return std::max(get_distance_squared(p0, p3, p1), get_distance_squared(p0, p3, p2));
 	}
 	void curve_to(const Point& p1, const Point& p2, const Point& p3) {
 		const Point& p0 = current_point();
@@ -160,11 +173,6 @@ struct Path {
 			start = end;
 		}
 	}
-	static float angle(const Point& p) {
-		const float length = std::sqrt(p.x * p.x + p.y * p.y);
-		const float a = std::acos(p.x / length);
-		return p.y < 0.f ? -a : a;
-	}
 	void arc_to(Point r, float rotation, bool large_arc, bool sweep, const Point& end) {
 		const Point& start = current_point();
 		const Point p = Transformation::rotate(-rotation) * ((start - end) * .5f);
@@ -196,9 +204,17 @@ struct Path {
 	void close() {
 		subpaths.back().closed = true;
 	}
-	Path stroke(float width) const {
+	void fill(std::vector<Shape>& shapes, const std::shared_ptr<Paint>& paint) const {
+		shapes.emplace_back(paint);
+		Shape& shape = shapes.back();
+		for (const Subpath& subpath: subpaths) {
+			fill_subpath(subpath, shape);
+		}
+	}
+	void stroke(std::vector<Shape>& shapes, float width, const std::shared_ptr<Paint>& paint) const {
+		shapes.emplace_back(paint);
+		Shape& shape = shapes.back();
 		const float offset = width / 2.f;
-		Path path;
 		for (const Subpath& subpath: subpaths) {
 			const std::vector<Point>& points = subpath.points;
 			Subpath new_subpath;
@@ -208,7 +224,7 @@ struct Path {
 			if (subpath.closed) {
 				new_subpath.push_offset_segment(points.back(), points.front(), offset);
 				new_subpath.closed = true;
-				path.subpaths.push_back(new_subpath);
+				fill_subpath(new_subpath, shape);
 				new_subpath = Subpath();
 				new_subpath.push_offset_segment(points.front(), points.back(), offset);
 			}
@@ -216,20 +232,10 @@ struct Path {
 				new_subpath.push_offset_segment(points[i], points[i-1], offset);
 			}
 			new_subpath.closed = true;
-			path.subpaths.push_back(new_subpath);
+			fill_subpath(new_subpath, shape);
 		}
-		return path;
 	}
 };
-
-inline Path operator *(const Transformation& t, Path path) {
-	for (Subpath& subpath: path.subpaths) {
-		for (Point& p: subpath.points) {
-			p = t * p;
-		}
-	}
-	return path;
-}
 
 struct ColorPaint: Paint {
 	Color color;
@@ -402,31 +408,18 @@ struct Document {
 	std::vector<Shape> shapes;
 	float width = 0.f;
 	float height = 0.f;
-	void append_segment(const Point& p0, const Point& p1) {
-		if (p0.y != p1.y) {
-			shapes.back().segments.push_back(Segment(p0, p1));
-		}
-	}
 	void fill(const Path& path, const std::shared_ptr<Paint>& paint) {
-		const int index = shapes.size();
-		shapes.push_back(Shape(paint, index));
-		for (const Subpath& subpath: path.subpaths) {
-			const std::vector<Point>& points = subpath.points;
-			for (size_t i = 1; i < points.size(); ++i) {
-				append_segment(points[i-1], points[i]);
-			}
-			append_segment(points.back(), points.front());
-		}
+		path.fill(shapes, paint);
 	}
 	void stroke(const Path& path, const std::shared_ptr<Paint>& paint, float width) {
-		fill(path.stroke(width), paint);
+		path.stroke(shapes, width, paint);
 	}
 	void draw(const Path& path, const Style& style, const Transformation& transformation = Transformation()) {
 		if (style.fill && style.fill_opacity > 0.f) {
-			fill(transformation * path, style.get_fill_paint(transformation));
+			fill(path, style.get_fill_paint(transformation));
 		}
 		if (style.stroke && style.stroke_width > 0.f && style.stroke_opacity > 0.f) {
-			fill(transformation * path.stroke(style.stroke_width), style.get_stroke_paint(transformation));
+			stroke(path, style.get_stroke_paint(transformation), style.stroke_width);
 		}
 	}
 };

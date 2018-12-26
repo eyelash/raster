@@ -87,8 +87,12 @@ struct Paint {
 struct Shape {
 	std::vector<Segment> segments;
 	std::shared_ptr<Paint> paint;
-	int index;
-	Shape(const std::shared_ptr<Paint>& paint, int index): paint(paint), index(index) {}
+	Shape(const std::shared_ptr<Paint>& paint): paint(paint) {}
+	void append_segment(const Point& p0, const Point& p1) {
+		if (p0.y != p1.y) {
+			segments.emplace_back(p0, p1);
+		}
+	}
 };
 
 void rasterize(const std::vector<Shape>& shapes, const char* file_name, size_t width, size_t height);
