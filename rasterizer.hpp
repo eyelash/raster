@@ -28,6 +28,9 @@ struct Point {
 	constexpr Point operator *(float f) const {
 		return Point(x * f, y * f);
 	}
+	constexpr bool operator ==(const Point& p) const {
+		return x == p.x && y == p.y;
+	}
 };
 
 constexpr float dot(const Point& p0, const Point& p1) {

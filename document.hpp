@@ -60,20 +60,6 @@ constexpr Transformation operator *(const Transformation& t0, const Transformati
 	);
 }
 
-struct CubicBezierCurve {
-	Point p0, p1, p2, p3;
-	constexpr CubicBezierCurve(const Point& p0, const Point& p1, const Point& p2, const Point& p3): p0(p0), p1(p1), p2(p2), p3(p3) {}
-	static constexpr Point reject(const Point& a, const Point& b) {
-		return a - b * (dot(a, b) / dot(b, b));
-	}
-	float get_error_squared() const {
-		const Point d = p3 - p0;
-		const Point e1 = reject(p1 - p0, d);
-		const Point e2 = reject(p2 - p0, d);
-		return std::max(dot(e1, e1), dot(e2, e2)) * dot(d, d);
-	}
-};
-
 struct Subpath {
 	std::vector<Point> points;
 	bool closed = false;
@@ -93,7 +79,9 @@ struct Subpath {
 };
 
 struct Path {
+	Transformation t;
 	std::vector<Subpath> subpaths;
+	Path(const Transformation& t = Transformation()): t(t) {}
 	Point current_point() const {
 		if (subpaths.empty()) {
 			return Point(0.f, 0.f);
@@ -122,10 +110,24 @@ struct Path {
 	void line_to(float x, float y) {
 		line_to(Point(x, y));
 	}
+	static constexpr float length_squared(const Point& p) {
+		return dot(p, p);
+	}
+	// returns the distance (squared) between p and the segment a-b
+	static float get_distance_squared(const Point& a, const Point& b, const Point& p) {
+		if (a == b) return length_squared(p - a);
+		const float u = dot(p - a, b - a) / length_squared(b - a);
+		if (u <= 0.f) return length_squared(p - a);
+		else if (u >= 1.f) return length_squared(p - b);
+		else return length_squared((p - a) - (b - a) * u);
+	}
+	float get_error_squared(const Point& p0, const Point& p1, const Point& p2, const Point& p3) {
+		return std::max(get_distance_squared(p0, p3, p1), get_distance_squared(p0, p3, p2));
+	}
 	void curve_to(const Point& p1, const Point& p2, const Point& p3) {
 		const Point& p0 = current_point();
-		constexpr float tolerance = 1.f / 256.f;
-		if (CubicBezierCurve(p0, p1, p2, p3).get_error_squared() < tolerance * tolerance) {
+		constexpr float tolerance = .1f;
+		if (get_error_squared(t * p0, t * p1, t * p2, t * p3) < tolerance * tolerance) {
 			line_to(p3);
 		}
 		else {

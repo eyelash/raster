@@ -986,7 +986,7 @@ class SVGParser: public XMLParser {
 		}
 		const StringView& name = node->get_name();
 		if (name == "path") {
-			Path path;
+			Path path(transformation);
 			if (StringView value = node->get_attribute("d")) {
 				PathParser p(value, path);
 				p.parse();
@@ -994,7 +994,7 @@ class SVGParser: public XMLParser {
 			document.draw(path, style, transformation);
 		}
 		else if (name == "rect") {
-			Path path;
+			Path path(transformation);
 			const float x = get_number(node, "x", 0.f);
 			const float y = get_number(node, "y", 0.f);
 			const float width = get_number(node, "width", 0.f);
@@ -1029,7 +1029,7 @@ class SVGParser: public XMLParser {
 			document.draw(path, style, transformation);
 		}
 		else if (name == "circle") {
-			Path path;
+			Path path(transformation);
 			const float cx = get_number(node, "cx", 0.f);
 			const float cy = get_number(node, "cy", 0.f);
 			const float r = get_number(node, "r", 0.f);
@@ -1039,7 +1039,7 @@ class SVGParser: public XMLParser {
 			document.draw(path, style, transformation);
 		}
 		else if (name == "ellipse") {
-			Path path;
+			Path path(transformation);
 			const float cx = get_number(node, "cx", 0.f);
 			const float cy = get_number(node, "cy", 0.f);
 			const float rx = get_number(node, "rx", 0.f);
@@ -1051,7 +1051,7 @@ class SVGParser: public XMLParser {
 			document.draw(path, style, transformation);
 		}
 		else if (name == "line") {
-			Path path;
+			Path path(transformation);
 			const float x1 = get_number(node, "x1", 0.f);
 			const float y1 = get_number(node, "y1", 0.f);
 			const float x2 = get_number(node, "x2", 0.f);
@@ -1062,7 +1062,7 @@ class SVGParser: public XMLParser {
 		}
 		else if (name == "polyline") {
 			if (StringView value = node->get_attribute("points")) {
-				Path path;
+				Path path(transformation);
 				PathParser p(value, path);
 				p.parse_polyline();
 				document.draw(path, style, transformation);
@@ -1070,7 +1070,7 @@ class SVGParser: public XMLParser {
 		}
 		else if (name == "polygon") {
 			if (StringView value = node->get_attribute("points")) {
-				Path path;
+				Path path(transformation);
 				PathParser p(value, path);
 				p.parse_polyline();
 				path.close();
