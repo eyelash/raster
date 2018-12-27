@@ -174,6 +174,10 @@ public:
 		}
 	}
 	void arc_to(Point r, float rotation, bool large_arc, bool sweep, const Point& end) {
+		if (r.x == 0.f || r.y == 0.f) {
+			line_to(end);
+			return;
+		}
 		const Point& start = current_point();
 		const Point p = Transformation::rotate(-rotation) * ((start - end) * .5f);
 		Point c(0.f, 0.f);

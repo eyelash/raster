@@ -246,7 +246,7 @@ void rasterize(const std::vector<Shape>& shapes, const char* file_name, size_t w
 
 	Pixmap pixmap(width, height);
 
-	float y = events.top().y;
+	float y = events.empty() ? 0.f : events.top().y;
 	std::vector<const RasterizeLine*> current_lines;
 	while (!events.empty()) {
 		Event event = events.top();
