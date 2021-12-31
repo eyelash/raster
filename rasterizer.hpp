@@ -95,4 +95,25 @@ struct Shape {
 	}
 };
 
+class Pixmap {
+	std::vector<Color> pixels;
+	size_t width;
+public:
+	Pixmap(size_t width, size_t height): pixels(width*height), width(width) {}
+	size_t get_width() const {
+		return width;
+	}
+	size_t get_height() const {
+		return pixels.size() / width;
+	}
+	Color get_pixel(size_t x, size_t y) const {
+		size_t i = y * width + x;
+		return pixels[i];
+	}
+	void add_pixel(size_t x, size_t y, const Color& color) {
+		size_t i = y * width + x;
+		pixels[i] = pixels[i] + color;
+	}
+};
+
 void rasterize(const std::vector<Shape>& shapes, const char* file_name, size_t width, size_t height);
