@@ -17,6 +17,18 @@ All rights reserved.
 namespace {
 
 struct ShapeMap: std::map<const Shape*, int> {
+	void modify(const Shape* shape, int direction) {
+		auto iter = find(shape);
+		if (iter != end()) {
+			iter->second += direction;
+			if (iter->second == 0) {
+				erase(iter);
+			}
+		}
+		else {
+			insert(std::make_pair(shape, direction));
+		}
+	}
 	Color get_color(const Point& point) const {
 		Color color;
 		for (auto& pair: *this) {
@@ -109,16 +121,7 @@ void rasterize_row(const Strip& strip, Pixmap& pixmap, size_t y) {
 	ShapeMap shapes;
 	for (size_t i = 1; i < strip.lines.size(); ++i) {
 		const RasterizeLine& l0 = strip.lines[i-1];
-		auto iter = shapes.find(l0.shape);
-		if (iter != shapes.end()) {
-			iter->second += l0.direction;
-			if (iter->second == 0) {
-				shapes.erase(iter);
-			}
-		}
-		else {
-			shapes.insert(std::make_pair(l0.shape, l0.direction));
-		}
+		shapes.modify(l0.shape, l0.direction);
 		if (!shapes.empty()) {
 			const RasterizeLine& l1 = strip.lines[i];
 			Trapezoid trapezoid(y0, y1, l0, l1);
